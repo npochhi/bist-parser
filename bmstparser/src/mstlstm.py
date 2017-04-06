@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import *
 from torch.autograd import Variable
+from torch import optim
 from utils import read_conll, write_conll
 from operator import itemgetter
 import utils, time, random, decoder
@@ -221,9 +222,7 @@ class MSTParserLSTMModel(nn.Module):
                 sentence[modifier + 1].pred_relation = self.irels[
                     max(enumerate(scores), key=itemgetter(1))[0]]
 
-    def get_loss(self, sentence, mloss, errs, lerrs):
-        eerrors = 0
-        eloss = 0.0
+    def get_loss(self, sentence, errs, lerrs):
 
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
@@ -284,64 +283,63 @@ class MSTParserLSTMModel(nn.Module):
                     lerrs.append(rexprs[wrongLabelInd] - rexprs[goldLabelInd])
 
         e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
-        eerrors += e
         if e > 0:
             loss = [(exprs[h][i] - exprs[g][i]) for i, (h, g) in enumerate(zip(heads, gold)) if
-                    h != g]  # * (1.0/float(e))
-            eloss += (e)
-            mloss += (e)
+                    h != g]
             errs.extend(loss)
+        return e
 
 
-class MSTTrainer:
+class MSTParserLSTM:
     def __init__(self, vocab, pos, rels, w2i, options):
         self.model = MSTParserLSTMModel(vocab, pos, rels, w2i, options)
 
-    def Predict(self, conll_path):
+        self.trainer = {'sgd': optim.SGD, 'adam': optim.Adam}[options.opt](self.model.parameters(), **options)
+
+    def predict(self, conll_path):
         with open(conll_path, 'r') as conllFP:
             for iSentence, sentence in enumerate(read_conll(conllFP)):
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
                 self.model.predict(conll_sentence)
                 yield conll_sentence
 
-    def Train(self, conll_path):
-        errors = 0
+    def train(self, conll_path):
         batch = 0
         eloss = 0.0
         mloss = 0.0
         eerrors = 0
         etotal = 0
+        iSentence = 0
         start = time.time()
-
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
             random.shuffle(shuffledData)
-
             errs = []
             lerrs = []
-
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print 'Processing sentence number:', iSentence, 'Loss:', eloss / etotal, 'Errors:', (float(
                         eerrors)) / etotal, 'Time', time.time() - start
                     start = time.time()
+                    eerrors = 0
+                    eloss = 0.0
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
-                self.model.get_loss(conll_sentence, mloss, errs, lerrs)
+                e = self.model.get_loss(conll_sentence, errs, lerrs)
+                eloss += e
+                mloss += e
                 etotal += len(sentence)
-                if iSentence % 1 == 0 or len(errs) > 0 or len(lerrs) > 0:
+                if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
                         eerrs = torch.sum(errs + lerrs)  # * (1.0/(float(len(errs))))
                         eerrs.scalar_value()
                         eerrs.backward()
-                        self.trainer.update()
+                        self.trainer.step()
                         errs = []
                         lerrs = []
         if len(errs) > 0:
-            eerrs = (torch.sum(errs + lerrs))  # * (1.0/(float(len(errs))))
+            eerrs = (torch.sum(errs + lerrs))
             eerrs.scalar_value()
             eerrs.backward()
-            self.trainer.update()
-
-        self.trainer.update_epoch()
+            self.trainer.step()
         print "Loss: ", mloss / iSentence

@@ -1,5 +1,6 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, os, os.path, time
+from torch import optim
 
 if __name__ == '__main__':
     parser = OptionParser()
@@ -43,14 +44,14 @@ if __name__ == '__main__':
         stored_opt.external_embedding = options.external_embedding
 
         print 'Initializing lstm mstparser:'
-        parser = mstlstm.MSTTrainer(words, pos, rels, w2i, stored_opt)
+        parser = mstlstm.MSTParserLSTM(words, pos, rels, w2i, stored_opt)
 
         parser.Load(options.model)
         conllu = (os.path.splitext(options.conll_test.lower())[1] == '.conllu')
         tespath = os.path.join(options.output, 'test_pred.conll' if not conllu else 'test_pred.conllu')
 
         ts = time.time()
-        test_res = list(parser.Predict(options.conll_test))
+        test_res = list(parser.predict(options.conll_test))
         te = time.time()
         print 'Finished predicting test.', te - ts, 'seconds.'
         utils.write_conll(tespath, test_res)
@@ -69,15 +70,14 @@ if __name__ == '__main__':
         print 'Finished collecting vocab'
 
         print 'Initializing lstm mstparser:'
-        parser = mstlstm.MSTTrainer(words, pos, rels, w2i, options)
-
+        parser = mstlstm.MSTParserLSTM(words, pos, rels, w2i, options)
         for epoch in xrange(options.epochs):
             print 'Starting epoch', epoch
-            parser.Train(options.conll_train)
+            parser.train(options.conll_train)
             conllu = (os.path.splitext(options.conll_dev.lower())[1] == '.conllu')
             devpath = os.path.join(options.output,
                                    'dev_epoch_' + str(epoch + 1) + ('.conll' if not conllu else '.conllu'))
-            utils.write_conll(devpath, parser.Predict(options.conll_dev))
+            utils.write_conll(devpath, parser.predict(options.conll_dev))
             parser.Save(os.path.join(options.output, os.path.basename(options.model) + str(epoch + 1)))
 
             if not conllu:
