@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import *
@@ -110,39 +109,56 @@ class MSTParserLSTMModel(nn.Module):
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
-            sentence[i].headfov = self.hidLayerFOH.expr() * concatenate([sentence[i].lstms[0], sentence[i].lstms[1]])
+            sentence[i].headfov = torch.mm(self.hidLayerFOH, torch.cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
         if sentence[j].modfov is None:
-            sentence[j].modfov = self.hidLayerFOM.expr() * concatenate([sentence[j].lstms[0], sentence[j].lstms[1]])
+            sentence[j].modfov = torch.mm(self.hidLayerFOM, torch.cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
 
         if self.hidden2_units > 0:
-            output = self.outLayer.expr() * self.activation(
-                self.hid2Bias.expr() + self.hid2Layer.expr() * self.activation(
-                    sentence[i].headfov + sentence[j].modfov + self.hidBias.expr()))  # + self.outBias
+            output = torch.mm(
+                self.outLayer,
+                self.activation(
+                    self.hid2Bias +
+                    torch.mm(self.hid2Layer,
+                             self.activation(sentence[i].headfov + sentence[j].modfov + self.hidBias))
+                )
+            )  # + self.outBias
         else:
-            output = self.outLayer.expr() * self.activation(
-                sentence[i].headfov + sentence[j].modfov + self.hidBias.expr())  # + self.outBias
+            output = torch.mm(
+                self.outLayer,
+                self.activation(
+                    sentence[i].headfov + sentence[j].modfov + self.hidBias)
+            )  # + self.outBias
 
         return output
 
     def __evaluate(self, sentence, train):
         exprs = [[self.__getExpr(sentence, i, j, train) for j in xrange(len(sentence))] for i in xrange(len(sentence))]
-        scores = np.array([[output.scalar_value() for output in exprsRow] for exprsRow in exprs])
+        scores = np.array([[output for output in exprsRow] for exprsRow in exprs])
 
         return scores, exprs
 
     def __evaluateLabel(self, sentence, i, j):
         if sentence[i].rheadfov is None:
-            sentence[i].rheadfov = self.rhidLayerFOH.expr() * concatenate([sentence[i].lstms[0], sentence[i].lstms[1]])
+            sentence[i].rheadfov = torch.mm(self.rhidLayerFOH, torch.cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
         if sentence[j].rmodfov is None:
-            sentence[j].rmodfov = self.rhidLayerFOM.expr() * concatenate([sentence[j].lstms[0], sentence[j].lstms[1]])
+            sentence[j].rmodfov = torch.mm(self.rhidLayerFOM, torch.cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
 
         if self.hidden2_units > 0:
-            output = self.routLayer.expr() * self.activation(
-                self.rhid2Bias.expr() + self.rhid2Layer.expr() * self.activation(
-                    sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias.expr())) + self.routBias.expr()
+            output = torch.mm(
+                self.routLayer,
+                self.activation(
+                    self.rhid2Bias +
+                    torch.mm(
+                        self.rhid2Layer,
+                        self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
+                    ) +
+                    self.routBias)
+            )
         else:
-            output = self.routLayer.expr() * self.activation(
-                sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias.expr()) + self.routBias.expr()
+            output = torch.mm(
+                self.routLayer.expr(),
+                self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
+            ) + self.routBias
 
         return output.value(), output
 
@@ -158,7 +174,7 @@ class MSTParserLSTMModel(nn.Module):
             posvec = self.plookup[int(self.pos[entry.pos])] if self.pdims > 0 else None
             evec = self.elookup[int(self.extrnd.get(entry.form, self.extrnd.get(entry.norm,
                                                                                 0)))] if self.external_embedding is not None else None
-            entry.vec = concatenate(filter(None, [wordvec, posvec, evec]))
+            entry.vec = torch.cat([wordvec, posvec, evec])
 
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
@@ -180,7 +196,7 @@ class MSTParserLSTMModel(nn.Module):
 
             if self.bibiFlag:
                 for entry in sentence:
-                    entry.vec = concatenate(entry.lstms)
+                    entry.vec = torch.cat(entry.lstms)
 
                 blstm_forward = self.bbuilders[0].initial_state()
                 blstm_backward = self.bbuilders[1].initial_state()
@@ -204,6 +220,77 @@ class MSTParserLSTMModel(nn.Module):
                 scores, exprs = self.__evaluateLabel(sentence, head, modifier + 1)
                 sentence[modifier + 1].pred_relation = self.irels[
                     max(enumerate(scores), key=itemgetter(1))[0]]
+
+    def get_loss(self, sentence, mloss, errs, lerrs):
+        eerrors = 0
+        eloss = 0.0
+
+        for entry in sentence:
+            c = float(self.wordsCount.get(entry.norm, 0))
+            dropFlag = (random.random() < (c / (0.25 + c)))
+            wordvec = self.wlookup[
+                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0] if self.wdims > 0 else None
+            posvec = self.plookup[int(self.pos[entry.pos])] if self.pdims > 0 else None
+            evec = None
+
+            if self.external_embedding is not None:
+                evec = self.elookup[self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
+                    dropFlag or (random.random() < 0.5)) else 0]
+            entry.vec = torch.cat([wordvec, posvec, evec])
+
+            entry.lstms = [entry.vec, entry.vec]
+            entry.headfov = None
+            entry.modfov = None
+
+            entry.rheadfov = None
+            entry.rmodfov = None
+
+        if self.blstmFlag:
+            lstm_forward = self.builders[0].initial_state()
+            lstm_backward = self.builders[1].initial_state()
+
+            for entry, rentry in zip(sentence, reversed(sentence)):
+                lstm_forward = lstm_forward.add_input(entry.vec)
+                lstm_backward = lstm_backward.add_input(rentry.vec)
+
+                entry.lstms[1] = lstm_forward.output()
+                rentry.lstms[0] = lstm_backward.output()
+
+            if self.bibiFlag:
+                for entry in sentence:
+                    entry.vec = torch.cat(entry.lstms)
+
+                blstm_forward = self.bbuilders[0].initial_state()
+                blstm_backward = self.bbuilders[1].initial_state()
+
+                for entry, rentry in zip(sentence, reversed(sentence)):
+                    blstm_forward = blstm_forward.add_input(entry.vec)
+                    blstm_backward = blstm_backward.add_input(rentry.vec)
+
+                    entry.lstms[1] = blstm_forward.output()
+                    rentry.lstms[0] = blstm_backward.output()
+
+        scores, exprs = self.__evaluate(sentence, True)
+        gold = [entry.parent_id for entry in sentence]
+        heads = decoder.parse_proj(scores, gold if self.costaugFlag else None)
+
+        if self.labelsFlag:
+            for modifier, head in enumerate(gold[1:]):
+                rscores, rexprs = self.__evaluateLabel(sentence, head, modifier + 1)
+                goldLabelInd = self.rels[sentence[modifier + 1].relation]
+                wrongLabelInd = \
+                    max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
+                if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
+                    lerrs.append(rexprs[wrongLabelInd] - rexprs[goldLabelInd])
+
+        e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
+        eerrors += e
+        if e > 0:
+            loss = [(exprs[h][i] - exprs[g][i]) for i, (h, g) in enumerate(zip(heads, gold)) if
+                    h != g]  # * (1.0/float(e))
+            eloss += (e)
+            mloss += (e)
+            errs.extend(loss)
 
 
 class MSTTrainer:
@@ -232,114 +319,29 @@ class MSTTrainer:
 
             errs = []
             lerrs = []
-            eeloss = 0.0
 
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print 'Processing sentence number:', iSentence, 'Loss:', eloss / etotal, 'Errors:', (float(
                         eerrors)) / etotal, 'Time', time.time() - start
                     start = time.time()
-                    eerrors = 0
-                    eloss = 0.0
-                    etotal = 0
-                    lerrors = 0
-                    ltotal = 0
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
-
-                for entry in conll_sentence:
-                    c = float(self.wordsCount.get(entry.norm, 0))
-                    dropFlag = (random.random() < (c / (0.25 + c)))
-                    wordvec = self.wlookup[
-                        int(self.vocab.get(entry.norm, 0)) if dropFlag else 0] if self.wdims > 0 else None
-                    posvec = self.plookup[int(self.pos[entry.pos])] if self.pdims > 0 else None
-                    evec = None
-
-                    if self.external_embedding is not None:
-                        evec = self.elookup[self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
-                            dropFlag or (random.random() < 0.5)) else 0]
-                    entry.vec = concatenate(filter(None, [wordvec, posvec, evec]))
-
-                    entry.lstms = [entry.vec, entry.vec]
-                    entry.headfov = None
-                    entry.modfov = None
-
-                    entry.rheadfov = None
-                    entry.rmodfov = None
-
-                if self.blstmFlag:
-                    lstm_forward = self.builders[0].initial_state()
-                    lstm_backward = self.builders[1].initial_state()
-
-                    for entry, rentry in zip(conll_sentence, reversed(conll_sentence)):
-                        lstm_forward = lstm_forward.add_input(entry.vec)
-                        lstm_backward = lstm_backward.add_input(rentry.vec)
-
-                        entry.lstms[1] = lstm_forward.output()
-                        rentry.lstms[0] = lstm_backward.output()
-
-                    if self.bibiFlag:
-                        for entry in conll_sentence:
-                            entry.vec = concatenate(entry.lstms)
-
-                        blstm_forward = self.bbuilders[0].initial_state()
-                        blstm_backward = self.bbuilders[1].initial_state()
-
-                        for entry, rentry in zip(conll_sentence, reversed(conll_sentence)):
-                            blstm_forward = blstm_forward.add_input(entry.vec)
-                            blstm_backward = blstm_backward.add_input(rentry.vec)
-
-                            entry.lstms[1] = blstm_forward.output()
-                            rentry.lstms[0] = blstm_backward.output()
-
-                scores, exprs = self.__evaluate(conll_sentence, True)
-                gold = [entry.parent_id for entry in conll_sentence]
-                heads = decoder.parse_proj(scores, gold if self.costaugFlag else None)
-
-                if self.labelsFlag:
-                    for modifier, head in enumerate(gold[1:]):
-                        rscores, rexprs = self.__evaluateLabel(conll_sentence, head, modifier + 1)
-                        goldLabelInd = self.rels[conll_sentence[modifier + 1].relation]
-                        wrongLabelInd = \
-                            max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
-                        if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
-                            lerrs.append(rexprs[wrongLabelInd] - rexprs[goldLabelInd])
-
-                e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
-                eerrors += e
-                if e > 0:
-                    loss = [(exprs[h][i] - exprs[g][i]) for i, (h, g) in enumerate(zip(heads, gold)) if
-                            h != g]  # * (1.0/float(e))
-                    eloss += (e)
-                    mloss += (e)
-                    errs.extend(loss)
-
-                etotal += len(conll_sentence)
-
+                self.model.get_loss(conll_sentence, mloss, errs, lerrs)
+                etotal += len(sentence)
                 if iSentence % 1 == 0 or len(errs) > 0 or len(lerrs) > 0:
-                    eeloss = 0.0
-
                     if len(errs) > 0 or len(lerrs) > 0:
-                        eerrs = (esum(errs + lerrs))  # * (1.0/(float(len(errs))))
+                        eerrs = torch.sum(errs + lerrs)  # * (1.0/(float(len(errs))))
                         eerrs.scalar_value()
                         eerrs.backward()
                         self.trainer.update()
                         errs = []
                         lerrs = []
-
-                    renew_cg()
-
         if len(errs) > 0:
-            eerrs = (esum(errs + lerrs))  # * (1.0/(float(len(errs))))
+            eerrs = (torch.sum(errs + lerrs))  # * (1.0/(float(len(errs))))
             eerrs.scalar_value()
             eerrs.backward()
             self.trainer.update()
-
-            errs = []
-            lerrs = []
-            eeloss = 0.0
-
-            renew_cg()
 
         self.trainer.update_epoch()
         print "Loss: ", mloss / iSentence
