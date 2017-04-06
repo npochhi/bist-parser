@@ -1,18 +1,18 @@
-from dynet import *
+import torch
+import torch.nn as nn
 from utils import read_conll, write_conll
 from operator import itemgetter
 import utils, time, random, decoder
 import numpy as np
 
 
-class MSTParserLSTM:
+class MSTParserLSTMModel(nn.Module):
     def __init__(self, vocab, pos, rels, w2i, options):
-        self.model = Model()
         random.seed(1)
-        self.trainer = AdamTrainer(self.model)
-
-        self.activations = {'tanh': tanh, 'sigmoid': logistic, 'relu': rectify,
-                            'tanh3': (lambda x: tanh(cwise_multiply(cwise_multiply(x, x), x)))}
+        self.activations = {'tanh': nn.Tanh(), 'sigmoid': nn.Sigmoid(), 'relu': nn.ReLU(),
+                            #Not yet supporting tanh3
+                            #'tanh3': (lambda x: nn.Tanh()(cwise_multiply(cwise_multiply(x, x), x)))
+                            }
         self.activation = self.activations[options.activation]
 
         self.blstmFlag = options.blstmFlag
@@ -51,14 +51,14 @@ class MSTParserLSTM:
             print 'Load external embedding. Vector dimensions', self.edim
 
         if self.bibiFlag:
-            self.builders = [VanillaLSTMBuilder(1, self.wdims + self.pdims + self.edim, self.ldims, self.model),
-                             VanillaLSTMBuilder(1, self.wdims + self.pdims + self.edim, self.ldims, self.model)]
-            self.bbuilders = [VanillaLSTMBuilder(1, self.ldims * 2, self.ldims, self.model),
-                              VanillaLSTMBuilder(1, self.ldims * 2, self.ldims, self.model)]
+            self.builders = [nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims),
+                             nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims)]
+            self.bbuilders = [nn.LSTMCell(1, self.ldims * 2, self.ldims),
+                              nn.LSTMCell(1, self.ldims * 2, self.ldims)]
         elif self.layers > 0:
             self.builders = [
-                VanillaLSTMBuilder(self.layers, self.wdims + self.pdims + self.edim, self.ldims, self.model),
-                VanillaLSTMBuilder(self.layers, self.wdims + self.pdims + self.edim, self.ldims, self.model)]
+                nn.LSTMCell(self.layers, self.wdims + self.pdims + self.edim, self.ldims),
+                nn.LSTMCell(self.layers, self.wdims + self.pdims + self.edim, self.ldims)]
         else:
             self.builders = [SimpleRNNBuilder(1, self.wdims + self.pdims + self.edim, self.ldims, self.model),
                              SimpleRNNBuilder(1, self.wdims + self.pdims + self.edim, self.ldims, self.model)]
@@ -97,6 +97,9 @@ class MSTParserLSTM:
             self.routLayer = self.model.add_parameters(
                 (len(self.irels), self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
             self.routBias = self.model.add_parameters((len(self.irels)))
+
+class MSTParserLSTM:
+    def __init__(self, vocab, pos, rels, w2i, options):
 
     def __getExpr(self, sentence, i, j, train):
 
