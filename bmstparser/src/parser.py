@@ -43,7 +43,7 @@ if __name__ == '__main__':
         stored_opt.external_embedding = options.external_embedding
 
         print 'Initializing lstm mstparser:'
-        parser = mstlstm.MSTParserLSTM(words, pos, rels, w2i, stored_opt)
+        parser = mstlstm.MSTTrainer(words, pos, rels, w2i, stored_opt)
 
         parser.Load(options.model)
         conllu = (os.path.splitext(options.conll_test.lower())[1] == '.conllu')
@@ -69,7 +69,7 @@ if __name__ == '__main__':
         print 'Finished collecting vocab'
 
         print 'Initializing lstm mstparser:'
-        parser = mstlstm.MSTParserLSTM(words, pos, rels, w2i, options)
+        parser = mstlstm.MSTTrainer(words, pos, rels, w2i, options)
 
         for epoch in xrange(options.epochs):
             print 'Starting epoch', epoch
