@@ -9,8 +9,21 @@ import utils, time, random, decoder
 import numpy as np
 
 
-def Parameter(shape, init=xavier_uniform):
-    return Variable(init(torch.Tensor(*shape)), requires_grad=True)
+def Parameter(shape, init=xavier_uniform, requires_grad=True):
+    if hasattr(init, 'shape'):
+        return Variable(torch.Tensor(init), requires_grad=requires_grad)
+    return Variable(init(torch.Tensor(*shape)), requires_grad=requires_grad)
+
+
+def scalar(f):
+    if type(f) == int:
+        return Variable(torch.LongTensor([f]))
+    if type(f) == float:
+        return Variable(torch.Tensor([f]))
+
+
+def cat(l):
+    torch.cat(filter(lambda x: x, l))
 
 
 class MSTParserLSTMModel(nn.Module):
@@ -50,9 +63,11 @@ class MSTParserLSTMModel(nn.Module):
             self.edim = len(self.external_embedding.values()[0])
             self.noextrn = [0.0 for _ in xrange(self.edim)]
             self.extrnd = {word: i + 3 for i, word in enumerate(self.external_embedding)}
-            self.elookup = self.model.add_lookup_parameters((len(self.external_embedding) + 3, self.edim))
+            np_emb = np.zeros((len(self.external_embedding) + 3, self.edim))
             for word, i in self.extrnd.iteritems():
-                self.elookup.init_row(i, self.external_embedding[word])
+                np_emb[i] = self.external_embedding[word]
+            self.elookup = nn.Embedding(*np_emb.shape)
+            self.elookup.weight = Parameter(np_emb)
             self.extrnd['*PAD*'] = 1
             self.extrnd['*INITIAL*'] = 2
 
@@ -110,9 +125,9 @@ class MSTParserLSTMModel(nn.Module):
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
-            sentence[i].headfov = torch.mm(self.hidLayerFOH, torch.cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
+            sentence[i].headfov = torch.mm(self.hidLayerFOH, cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
         if sentence[j].modfov is None:
-            sentence[j].modfov = torch.mm(self.hidLayerFOM, torch.cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
+            sentence[j].modfov = torch.mm(self.hidLayerFOM, cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
 
         if self.hidden2_units > 0:
             output = torch.mm(
@@ -140,9 +155,9 @@ class MSTParserLSTMModel(nn.Module):
 
     def __evaluateLabel(self, sentence, i, j):
         if sentence[i].rheadfov is None:
-            sentence[i].rheadfov = torch.mm(self.rhidLayerFOH, torch.cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
+            sentence[i].rheadfov = torch.mm(self.rhidLayerFOH, cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
         if sentence[j].rmodfov is None:
-            sentence[j].rmodfov = torch.mm(self.rhidLayerFOM, torch.cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
+            sentence[j].rmodfov = torch.mm(self.rhidLayerFOM, cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
 
         if self.hidden2_units > 0:
             output = torch.mm(
@@ -171,11 +186,11 @@ class MSTParserLSTMModel(nn.Module):
 
     def predict(self, sentence):
         for entry in sentence:
-            wordvec = self.wlookup[int(self.vocab.get(entry.norm, 0))] if self.wdims > 0 else None
-            posvec = self.plookup[int(self.pos[entry.pos])] if self.pdims > 0 else None
-            evec = self.elookup[int(self.extrnd.get(entry.form, self.extrnd.get(entry.norm,
-                                                                                0)))] if self.external_embedding is not None else None
-            entry.vec = torch.cat([wordvec, posvec, evec])
+            wordvec = self.wlookup(scalar(int(self.vocab.get(entry.norm, 0)))) if self.wdims > 0 else None
+            posvec = self.plookup(scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
+            evec = self.elookup(scalar(int(self.extrnd.get(entry.form, self.extrnd.get(entry.norm,
+                                                                                       0))))) if self.external_embedding is not None else None
+            entry.vec = cat([wordvec, posvec, evec])
 
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
@@ -197,7 +212,7 @@ class MSTParserLSTMModel(nn.Module):
 
             if self.bibiFlag:
                 for entry in sentence:
-                    entry.vec = torch.cat(entry.lstms)
+                    entry.vec = cat(entry.lstms)
 
                 blstm_forward = self.bbuilders[0].initial_state()
                 blstm_backward = self.bbuilders[1].initial_state()
@@ -227,15 +242,15 @@ class MSTParserLSTMModel(nn.Module):
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
-            wordvec = self.wlookup[
-                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0] if self.wdims > 0 else None
-            posvec = self.plookup[int(self.pos[entry.pos])] if self.pdims > 0 else None
+            wordvec = self.wlookup(scalar(
+                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
+            posvec = self.plookup(scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
             evec = None
 
             if self.external_embedding is not None:
-                evec = self.elookup[self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
-                    dropFlag or (random.random() < 0.5)) else 0]
-            entry.vec = torch.cat([wordvec, posvec, evec])
+                evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
+                    dropFlag or (random.random() < 0.5)) else 0))
+            entry.vec = cat([wordvec, posvec, evec])
 
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
@@ -257,7 +272,7 @@ class MSTParserLSTMModel(nn.Module):
 
             if self.bibiFlag:
                 for entry in sentence:
-                    entry.vec = torch.cat(entry.lstms)
+                    entry.vec = cat(entry.lstms)
 
                 blstm_forward = self.bbuilders[0].initial_state()
                 blstm_backward = self.bbuilders[1].initial_state()
