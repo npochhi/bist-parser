@@ -2,10 +2,6 @@
 # The code is freely distributed under a MIT license. https://github.com/LxMLS/lxmls-toolkit/
 
 import numpy as np
-import sys
-from collections import defaultdict, namedtuple
-from operator import itemgetter
-
 
 def parse_proj(scores, gold=None):
     '''

@@ -1,6 +1,5 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, os, os.path, time
-from torch import optim
 
 if __name__ == '__main__':
     parser = OptionParser()
