@@ -9,9 +9,11 @@ import utils, time, random, decoder
 import numpy as np
 
 
-def Parameter(shape, init=xavier_uniform, requires_grad=True):
+def Parameter(shape=None, init=xavier_uniform, requires_grad=True):
     if hasattr(init, 'shape'):
+        assert not shape
         return Variable(torch.Tensor(init), requires_grad=requires_grad)
+    shape = (shape, 1) if type(shape) == int else shape
     return Variable(init(torch.Tensor(*shape)), requires_grad=requires_grad)
 
 
@@ -104,8 +106,9 @@ class MSTParserLSTMModel(nn.Module):
         self.hidLayerFOM = Parameter((self.hidden_units, self.ldims * 2))
         self.hidBias = Parameter((self.hidden_units))
 
-        self.hid2Layer = Parameter((self.hidden2_units, self.hidden_units))
-        self.hid2Bias = Parameter((self.hidden2_units))
+        if self.hidden2_units:
+            self.hid2Layer = Parameter((self.hidden2_units, self.hidden_units))
+            self.hid2Bias = Parameter((self.hidden2_units))
 
         self.outLayer = Parameter(
             (1, self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
@@ -115,8 +118,9 @@ class MSTParserLSTMModel(nn.Module):
             self.rhidLayerFOM = Parameter((self.hidden_units, 2 * self.ldims))
             self.rhidBias = Parameter((self.hidden_units))
 
-            self.rhid2Layer = Parameter((self.hidden2_units, self.hidden_units))
-            self.rhid2Bias = Parameter((self.hidden2_units))
+            if self.hidden2_units:
+                self.rhid2Layer = Parameter((self.hidden2_units, self.hidden_units))
+                self.rhid2Bias = Parameter((self.hidden2_units))
 
             self.routLayer = Parameter(
                 (len(self.irels), self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
@@ -243,12 +247,12 @@ class MSTParserLSTMModel(nn.Module):
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
             wordvec = self.wlookup(scalar(
-                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
-            posvec = self.plookup(scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
+                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)).t() if self.wdims > 0 else None
+            posvec = self.plookup(scalar(int(self.pos[entry.pos]))).t() if self.pdims > 0 else None
             evec = None
 
             if self.external_embedding is not None:
-                evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
+                evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)).t() if (
                     dropFlag or (random.random() < 0.5)) else 0))
             entry.vec = cat([wordvec, posvec, evec])
 
@@ -305,11 +309,18 @@ class MSTParserLSTMModel(nn.Module):
         return e
 
 
+def get_optim(opt, parameters):
+    if opt == 'sgd':
+        return optim.SGD(parameters, lr=opt.lr)
+    elif opt == 'adam':
+        return optim.Adam(parameters)
+
+
 class MSTParserLSTM:
     def __init__(self, vocab, pos, rels, w2i, options):
         self.model = MSTParserLSTMModel(vocab, pos, rels, w2i, options)
 
-        self.trainer = {'sgd': optim.SGD, 'adam': optim.Adam}[options.opt](self.model.parameters(), **options)
+        self.trainer = get_optim(options.optim, self.model.parameters())
 
     def predict(self, conll_path):
         with open(conll_path, 'r') as conllFP:
