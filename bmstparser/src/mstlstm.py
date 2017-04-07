@@ -28,6 +28,20 @@ def cat(l):
     torch.cat(filter(lambda x: x, l))
 
 
+class RNNState(nn.Module):
+    def __init__(self, cell, hidden=None):
+        super(RNNState, self).__init__()
+        self.cell = cell
+        if not hidden:
+            self.hidden = Variable(torch.zeros(self.cell.hidden_size)), Variable(torch.zeros(self.cell.hidden_size))
+
+    def __call__(self, input):
+        return RNNState(self.cell, self.cell(input, self.hidden))
+
+    def output(self):
+        return self.hidden[0]
+
+
 class MSTParserLSTMModel(nn.Module):
     def __init__(self, vocab, pos, rels, w2i, options):
         super(MSTParserLSTMModel, self).__init__()
@@ -204,12 +218,12 @@ class MSTParserLSTMModel(nn.Module):
             entry.rmodfov = None
 
         if self.blstmFlag:
-            lstm_forward = self.builders[0].initial_state()
-            lstm_backward = self.builders[1].initial_state()
+            lstm_forward = RNNState(self.builders[0])
+            lstm_backward = RNNState(self.builders[1])
 
             for entry, rentry in zip(sentence, reversed(sentence)):
-                lstm_forward = lstm_forward.add_input(entry.vec)
-                lstm_backward = lstm_backward.add_input(rentry.vec)
+                lstm_forward = lstm_forward(entry.vec)
+                lstm_backward = lstm_backward(rentry.vec)
 
                 entry.lstms[1] = lstm_forward.output()
                 rentry.lstms[0] = lstm_backward.output()
@@ -218,12 +232,12 @@ class MSTParserLSTMModel(nn.Module):
                 for entry in sentence:
                     entry.vec = cat(entry.lstms)
 
-                blstm_forward = self.bbuilders[0].initial_state()
-                blstm_backward = self.bbuilders[1].initial_state()
+                blstm_forward = RNNState(self.bbuilders[0])
+                blstm_backward = RNNState(self.bbuilders[1])
 
                 for entry, rentry in zip(sentence, reversed(sentence)):
-                    blstm_forward = blstm_forward.add_input(entry.vec)
-                    blstm_backward = blstm_backward.add_input(rentry.vec)
+                    blstm_forward = blstm_forward(entry.vec)
+                    blstm_backward = blstm_backward(rentry.vec)
 
                     entry.lstms[1] = blstm_forward.output()
                     rentry.lstms[0] = blstm_backward.output()
@@ -250,7 +264,6 @@ class MSTParserLSTMModel(nn.Module):
                 int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)).t() if self.wdims > 0 else None
             posvec = self.plookup(scalar(int(self.pos[entry.pos]))).t() if self.pdims > 0 else None
             evec = None
-
             if self.external_embedding is not None:
                 evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)).t() if (
                     dropFlag or (random.random() < 0.5)) else 0))
@@ -264,12 +277,12 @@ class MSTParserLSTMModel(nn.Module):
             entry.rmodfov = None
 
         if self.blstmFlag:
-            lstm_forward = self.builders[0].initial_state()
-            lstm_backward = self.builders[1].initial_state()
+            lstm_forward = RNNState(self.builders[0])
+            lstm_backward = RNNState(self.builders[1])
 
             for entry, rentry in zip(sentence, reversed(sentence)):
-                lstm_forward = lstm_forward.add_input(entry.vec)
-                lstm_backward = lstm_backward.add_input(rentry.vec)
+                lstm_forward = lstm_forward(entry.vec)
+                lstm_backward = lstm_backward(rentry.vec)
 
                 entry.lstms[1] = lstm_forward.output()
                 rentry.lstms[0] = lstm_backward.output()
@@ -278,12 +291,12 @@ class MSTParserLSTMModel(nn.Module):
                 for entry in sentence:
                     entry.vec = cat(entry.lstms)
 
-                blstm_forward = self.bbuilders[0].initial_state()
-                blstm_backward = self.bbuilders[1].initial_state()
+                blstm_forward = RNNState(self.bbuilders[0])
+                blstm_backward = RNNState(self.bbuilders[1])
 
                 for entry, rentry in zip(sentence, reversed(sentence)):
-                    blstm_forward = blstm_forward.add_input(entry.vec)
-                    blstm_backward = blstm_backward.add_input(rentry.vec)
+                    blstm_forward = blstm_forward(entry.vec)
+                    blstm_backward = blstm_backward(rentry.vec)
 
                     entry.lstms[1] = blstm_forward.output()
                     rentry.lstms[0] = blstm_backward.output()
