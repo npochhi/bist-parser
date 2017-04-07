@@ -25,12 +25,11 @@ def scalar(f):
 
 
 def cat(l):
-    torch.cat(filter(lambda x: x, l))
+    return torch.cat(filter(lambda x: x, l))
 
 
-class RNNState(nn.Module):
+class RNNState():
     def __init__(self, cell, hidden=None):
-        super(RNNState, self).__init__()
         self.cell = cell
         if not hidden:
             self.hidden = Variable(torch.zeros(self.cell.hidden_size)), Variable(torch.zeros(self.cell.hidden_size))
