@@ -24,20 +24,22 @@ def scalar(f):
         return Variable(torch.Tensor([f]))
 
 
-def cat(l):
-    return torch.cat(filter(lambda x: x, l))
+def cat(l, dimension=-1):
+    return torch.cat(filter(lambda x: x, l), dimension)
 
 
 class RNNState():
     def __init__(self, cell, hidden=None):
         self.cell = cell
+        self.hidden = hidden
         if not hidden:
-            self.hidden = Variable(torch.zeros(self.cell.hidden_size)), Variable(torch.zeros(self.cell.hidden_size))
+            self.hidden = Variable(torch.zeros(1, self.cell.hidden_size)), \
+                          Variable(torch.zeros(1, self.cell.hidden_size))
 
-    def __call__(self, input):
+    def next(self, input):
         return RNNState(self.cell, self.cell(input, self.hidden))
 
-    def output(self):
+    def __call__(self):
         return self.hidden[0]
 
 
@@ -91,13 +93,13 @@ class MSTParserLSTMModel(nn.Module):
         if self.bibiFlag:
             self.builders = [nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims),
                              nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims)]
-            self.bbuilders = [nn.LSTMCell(1, self.ldims * 2, self.ldims),
-                              nn.LSTMCell(1, self.ldims * 2, self.ldims)]
+            self.bbuilders = [nn.LSTMCell(self.ldims * 2, self.ldims),
+                              nn.LSTMCell(self.ldims * 2, self.ldims)]
         elif self.layers > 0:
             assert self.layers == 1, 'Not yet support deep LSTM'
             self.builders = [
-                nn.LSTMCell(self.layers, self.wdims + self.pdims + self.edim, self.ldims),
-                nn.LSTMCell(self.layers, self.wdims + self.pdims + self.edim, self.ldims)]
+                nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims),
+                nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims)]
         else:
             self.builders = [nn.RNNCell(self.wdims + self.pdims + self.edim, self.ldims),
                              nn.RNNCell(self.wdims + self.pdims + self.edim, self.ldims)]
@@ -142,39 +144,43 @@ class MSTParserLSTMModel(nn.Module):
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
-            sentence[i].headfov = torch.mm(self.hidLayerFOH, cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
+            sentence[i].headfov = torch.mm(cat([sentence[i].lstms[0], sentence[i].lstms[1]]),
+                                           self.hidLayerFOH.t())
         if sentence[j].modfov is None:
-            sentence[j].modfov = torch.mm(self.hidLayerFOM, cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
+            sentence[j].modfov = torch.mm(cat([sentence[j].lstms[0], sentence[j].lstms[1]]),
+                                          self.hidLayerFOM.t())
 
         if self.hidden2_units > 0:
             output = torch.mm(
                 self.outLayer,
                 self.activation(
                     self.hid2Bias +
-                    torch.mm(self.hid2Layer,
-                             self.activation(sentence[i].headfov + sentence[j].modfov + self.hidBias))
+                    torch.mm(self.activation(sentence[i].headfov + sentence[j].modfov + self.hidBias),
+                             self.hid2Layer.t())
                 )
             )  # + self.outBias
         else:
             output = torch.mm(
-                self.outLayer,
                 self.activation(
-                    sentence[i].headfov + sentence[j].modfov + self.hidBias)
-            )  # + self.outBias
+                    sentence[i].headfov + sentence[j].modfov + self.hidBias),
+                self.outLayer.t())  # + self.outBias
 
         return output
 
     def __evaluate(self, sentence, train):
-        exprs = [[self.__getExpr(sentence, i, j, train) for j in xrange(len(sentence))] for i in xrange(len(sentence))]
-        scores = np.array([[output for output in exprsRow] for exprsRow in exprs])
-
+        exprs = [[self.__getExpr(sentence, i, j, train)
+                  for j in xrange(len(sentence))]
+                 for i in xrange(len(sentence))]
+        scores = np.array([[output.data.numpy()[0, 0] for output in exprsRow] for exprsRow in exprs])
         return scores, exprs
 
     def __evaluateLabel(self, sentence, i, j):
         if sentence[i].rheadfov is None:
-            sentence[i].rheadfov = torch.mm(self.rhidLayerFOH, cat([sentence[i].lstms[0], sentence[i].lstms[1]]))
+            sentence[i].rheadfov = torch.mm(cat([sentence[i].lstms[0], sentence[i].lstms[1]]),
+                                            self.rhidLayerFOH.t())
         if sentence[j].rmodfov is None:
-            sentence[j].rmodfov = torch.mm(self.rhidLayerFOM, cat([sentence[j].lstms[0], sentence[j].lstms[1]]))
+            sentence[j].rmodfov = torch.mm(cat([sentence[j].lstms[0], sentence[j].lstms[1]]),
+                                           self.rhidLayerFOM.t())
 
         if self.hidden2_units > 0:
             output = torch.mm(
@@ -221,11 +227,11 @@ class MSTParserLSTMModel(nn.Module):
             lstm_backward = RNNState(self.builders[1])
 
             for entry, rentry in zip(sentence, reversed(sentence)):
-                lstm_forward = lstm_forward(entry.vec)
-                lstm_backward = lstm_backward(rentry.vec)
+                lstm_forward = lstm_forward.next(entry.vec)
+                lstm_backward = lstm_backward.next(rentry.vec)
 
-                entry.lstms[1] = lstm_forward.output()
-                rentry.lstms[0] = lstm_backward.output()
+                entry.lstms[1] = lstm_forward()
+                rentry.lstms[0] = lstm_backward()
 
             if self.bibiFlag:
                 for entry in sentence:
@@ -235,11 +241,11 @@ class MSTParserLSTMModel(nn.Module):
                 blstm_backward = RNNState(self.bbuilders[1])
 
                 for entry, rentry in zip(sentence, reversed(sentence)):
-                    blstm_forward = blstm_forward(entry.vec)
-                    blstm_backward = blstm_backward(rentry.vec)
+                    blstm_forward = blstm_forward.next(entry.vec)
+                    blstm_backward = blstm_backward.next(rentry.vec)
 
-                    entry.lstms[1] = blstm_forward.output()
-                    rentry.lstms[0] = blstm_backward.output()
+                    entry.lstms[1] = blstm_forward()
+                    rentry.lstms[0] = blstm_backward()
 
         scores, exprs = self.__evaluate(sentence, True)
         heads = decoder.parse_proj(scores)
@@ -260,11 +266,11 @@ class MSTParserLSTMModel(nn.Module):
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
             wordvec = self.wlookup(scalar(
-                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)).t() if self.wdims > 0 else None
-            posvec = self.plookup(scalar(int(self.pos[entry.pos]))).t() if self.pdims > 0 else None
+                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
+            posvec = self.plookup(scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
             evec = None
             if self.external_embedding is not None:
-                evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)).t() if (
+                evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
                     dropFlag or (random.random() < 0.5)) else 0))
             entry.vec = cat([wordvec, posvec, evec])
 
@@ -280,11 +286,11 @@ class MSTParserLSTMModel(nn.Module):
             lstm_backward = RNNState(self.builders[1])
 
             for entry, rentry in zip(sentence, reversed(sentence)):
-                lstm_forward = lstm_forward(entry.vec)
-                lstm_backward = lstm_backward(rentry.vec)
+                lstm_forward = lstm_forward.next(entry.vec)
+                lstm_backward = lstm_backward.next(rentry.vec)
 
-                entry.lstms[1] = lstm_forward.output()
-                rentry.lstms[0] = lstm_backward.output()
+                entry.lstms[1] = lstm_forward()
+                rentry.lstms[0] = lstm_backward()
 
             if self.bibiFlag:
                 for entry in sentence:
@@ -294,11 +300,11 @@ class MSTParserLSTMModel(nn.Module):
                 blstm_backward = RNNState(self.bbuilders[1])
 
                 for entry, rentry in zip(sentence, reversed(sentence)):
-                    blstm_forward = blstm_forward(entry.vec)
-                    blstm_backward = blstm_backward(rentry.vec)
+                    blstm_forward = blstm_forward.next(entry.vec)
+                    blstm_backward = blstm_backward.next(rentry.vec)
 
-                    entry.lstms[1] = blstm_forward.output()
-                    rentry.lstms[0] = blstm_backward.output()
+                    entry.lstms[1] = blstm_forward()
+                    rentry.lstms[0] = blstm_backward()
 
         scores, exprs = self.__evaluate(sentence, True)
         gold = [entry.parent_id for entry in sentence]
