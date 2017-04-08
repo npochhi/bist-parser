@@ -1,3 +1,4 @@
+import shutil
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import *
@@ -347,7 +348,13 @@ class MSTParserLSTM:
                 self.model.predict(conll_sentence)
                 yield conll_sentence
 
+    def save(self, fn):
+        tmp = fn + '.tmp'
+        torch.save(self.model.state_dict(), tmp)
+        shutil.move(tmp, fn)
+
     def train(self, conll_path):
+        print torch.__version__
         batch = 1
         eloss = 0.0
         mloss = 0.0

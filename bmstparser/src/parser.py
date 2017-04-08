@@ -78,7 +78,7 @@ if __name__ == '__main__':
             devpath = os.path.join(options.output,
                                    'dev_epoch_' + str(epoch + 1) + ('.conll' if not conllu else '.conllu'))
             utils.write_conll(devpath, parser.predict(options.conll_dev))
-            parser.Save(os.path.join(options.output, os.path.basename(options.model) + str(epoch + 1)))
+            parser.save(os.path.join(options.output, os.path.basename(options.model) + str(epoch + 1)))
 
             if not conllu:
                 os.system(
