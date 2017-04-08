@@ -369,14 +369,18 @@ class MSTParserLSTM:
             lerrs = []
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
-                    print 'Processing sentence number:', iSentence, 'Loss:', eloss / etotal, 'Errors:', (float(
-                        eerrors)) / etotal, 'Time', time.time() - start
+                    print 'Processing sentence number:', iSentence, \
+                        'Loss:', eloss / etotal, \
+                        'Errors:', (float(eerrors)) / etotal, \
+                        'Time', time.time() - start
                     start = time.time()
                     eerrors = 0
                     eloss = 0.0
+                    etotal = 0
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
                 e = self.model.get_loss(conll_sentence, errs, lerrs)
+                eerrors += e
                 eloss += e
                 mloss += e
                 etotal += len(sentence)
