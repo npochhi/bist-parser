@@ -195,11 +195,11 @@ class MSTParserLSTMModel(nn.Module):
             )
         else:
             output = torch.mm(
-                self.routLayer.expr(),
-                self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
+                self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias),
+                self.routLayer.t()
             ) + self.routBias
 
-        return output.value(), output
+        return output.data.numpy()[0], output[0]
 
     def Save(self, filename):
         self.model.save(filename)
@@ -257,8 +257,7 @@ class MSTParserLSTMModel(nn.Module):
         if self.labelsFlag:
             for modifier, head in enumerate(heads[1:]):
                 scores, exprs = self.__evaluateLabel(sentence, head, modifier + 1)
-                sentence[modifier + 1].pred_relation = self.irels[
-                    max(enumerate(scores), key=itemgetter(1))[0]]
+                sentence[modifier + 1].pred_relation = self.irels[max(enumerate(scores), key=itemgetter(1))[0]]
 
     def get_loss(self, sentence, errs, lerrs):
 
@@ -348,7 +347,7 @@ class MSTParserLSTM:
                 yield conll_sentence
 
     def train(self, conll_path):
-        batch = 0
+        batch = 1
         eloss = 0.0
         mloss = 0.0
         eerrors = 0
@@ -375,15 +374,13 @@ class MSTParserLSTM:
                 etotal += len(sentence)
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
-                        eerrs = torch.sum(errs + lerrs)  # * (1.0/(float(len(errs))))
-                        eerrs.scalar_value()
+                        eerrs = torch.sum(cat(errs + lerrs))
                         eerrs.backward()
                         self.trainer.step()
                         errs = []
                         lerrs = []
         if len(errs) > 0:
             eerrs = (torch.sum(errs + lerrs))
-            eerrs.scalar_value()
             eerrs.backward()
             self.trainer.step()
         print "Loss: ", mloss / iSentence
