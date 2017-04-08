@@ -25,7 +25,10 @@ def scalar(f):
 
 
 def cat(l, dimension=-1):
-    return torch.cat(filter(lambda x: x, l), dimension)
+    valid_l = filter(lambda x: x, l)
+    if dimension < 0:
+        dimension += len(valid_l[0].size())
+    return torch.cat(valid_l, dimension)
 
 
 class RNNState():
@@ -316,13 +319,11 @@ class MSTParserLSTMModel(nn.Module):
                 wrongLabelInd = \
                     max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
                 if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
-                    lerrs.append(rexprs[wrongLabelInd] - rexprs[goldLabelInd])
+                    lerrs += [rexprs[wrongLabelInd] - rexprs[goldLabelInd]]
 
         e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
         if e > 0:
-            loss = [(exprs[h][i] - exprs[g][i]) for i, (h, g) in enumerate(zip(heads, gold)) if
-                    h != g]
-            errs.extend(loss)
+            errs += [(exprs[h][i] - exprs[g][i])[0] for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
         return e
 
 
