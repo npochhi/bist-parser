@@ -13,9 +13,11 @@ import numpy as np
 def Parameter(shape=None, init=xavier_uniform, requires_grad=True):
     if hasattr(init, 'shape'):
         assert not shape
-        return Variable(torch.Tensor(init), requires_grad=requires_grad)
+        return nn.Parameter(torch.Tensor(init)) if requires_grad else \
+            Variable(torch.Tensor(init), requires_grad=False)
     shape = (shape, 1) if type(shape) == int else shape
-    return Variable(init(torch.Tensor(*shape)), requires_grad=requires_grad)
+    return nn.Parameter(init(torch.Tensor(*shape))) if requires_grad else \
+        Variable(init(torch.Tensor(*shape)), requires_grad=False)
 
 
 def scalar(f):
@@ -107,7 +109,11 @@ class MSTParserLSTMModel(nn.Module):
         else:
             self.builders = [nn.RNNCell(self.wdims + self.pdims + self.edim, self.ldims),
                              nn.RNNCell(self.wdims + self.pdims + self.edim, self.ldims)]
-
+        for i, b in enumerate(self.builders):
+            self.add_module('builder%i' % i, b)
+        if hasattr(self, 'bbuilders'):
+            for i, b in enumerate(self.bbuilders):
+                self.add_module('bbuilder%i' % i, b)
         self.hidden_units = options.hidden_units
         self.hidden2_units = options.hidden2_units
 
@@ -338,7 +344,6 @@ def get_optim(opt, parameters):
 class MSTParserLSTM:
     def __init__(self, vocab, pos, rels, w2i, options):
         self.model = MSTParserLSTMModel(vocab, pos, rels, w2i, options)
-
         self.trainer = get_optim(options.optim, self.model.parameters())
 
     def predict(self, conll_path):
@@ -391,8 +396,10 @@ class MSTParserLSTM:
                         self.trainer.step()
                         errs = []
                         lerrs = []
+                self.trainer.zero_grad()
         if len(errs) > 0:
             eerrs = (torch.sum(errs + lerrs))
             eerrs.backward()
             self.trainer.step()
+        self.trainer.zero_grad()
         print "Loss: ", mloss / iSentence
