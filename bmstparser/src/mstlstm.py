@@ -211,12 +211,6 @@ class MSTParserLSTMModel(nn.Module):
 
         return output.data.numpy()[0], output[0]
 
-    def Save(self, filename):
-        self.model.save(filename)
-
-    def Load(self, filename):
-        self.model.load(filename)
-
     def predict(self, sentence):
         for entry in sentence:
             wordvec = self.wlookup(scalar(int(self.vocab.get(entry.norm, 0)))) if self.wdims > 0 else None
@@ -269,7 +263,7 @@ class MSTParserLSTMModel(nn.Module):
                 scores, exprs = self.__evaluateLabel(sentence, head, modifier + 1)
                 sentence[modifier + 1].pred_relation = self.irels[max(enumerate(scores), key=itemgetter(1))[0]]
 
-    def get_loss(self, sentence, errs, lerrs):
+    def forward(self, sentence, errs, lerrs):
 
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
@@ -358,6 +352,9 @@ class MSTParserLSTM:
         torch.save(self.model.state_dict(), tmp)
         shutil.move(tmp, fn)
 
+    def load(self, fn):
+        self.model.load_state_dict(torch.load(fn))
+
     def train(self, conll_path):
         print torch.__version__
         batch = 1
@@ -384,7 +381,7 @@ class MSTParserLSTM:
                     etotal = 0
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
-                e = self.model.get_loss(conll_sentence, errs, lerrs)
+                e = self.model.forward(conll_sentence, errs, lerrs)
                 eerrors += e
                 eloss += e
                 mloss += e
