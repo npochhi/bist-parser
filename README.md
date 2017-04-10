@@ -25,4 +25,4 @@ The parser will store the resulting conll file in the out directory (`--outdir`)
 #### Difference from the DyNet implementation
 
 1. The multiple roots checking of the evaluation script is turned off (See [here](https://github.com/wddabc/bist-parser/blob/pytorch/bmstparser/src/utils/evaluation_script/conll17_ud_eval.py#L168-L172)) as it might generate trees with multiple roots. (See the discussion [here](https://github.com/elikip/bist-parser/issues/10)) 
-2. This version has not yet supports deep LSTM as the DyNet version does. It means `--lstmlayer` is no larger than 1.
+2. This version hasn't yet supported deep LSTM as the DyNet version does, which means `--lstmlayer` is no larger than 1.
