@@ -59,7 +59,13 @@ if __name__ == '__main__':
             os.system('perl src/utils/eval.pl -g ' + options.conll_test + ' -s ' + tespath + ' > ' + tespath + '.txt')
         else:
             os.system(
-                'python src/utils/evaluation_script/conll17_ud_eval.py -v -w src/utils/evaluation_script/weights.clas ' + options.conll_test + ' ' + tespath + ' > ' + testpath + '.txt')
+                'python src/utils/evaluation_script/conll17_ud_eval.py -v -w src/utils/evaluation_script/weights.clas ' + options.conll_test + ' ' + tespath + ' > ' + tespath + '.txt')
+            with open(tespath + '.txt', 'rb') as f:
+                for l in f:
+                    if l.startswith('UAS'):
+                        print 'UAS:%s' % l.strip().split()[-1]
+                    elif l.startswith('LAS'):
+                        print 'LAS:%s' % l.strip().split()[-1]
     else:
         print 'Preparing vocab'
         words, w2i, pos, rels = utils.vocab(options.conll_train)
