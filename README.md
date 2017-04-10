@@ -8,7 +8,7 @@ To be more accurate, this implementation is just a line-by-line translation from
 
 
 #### Data format:
-The software requires having a `training.conll` and `development.conll` files formatted according to the [CoNLL data format](http://ilk.uvt.nl/conll/#dataformat) or [CoNLLU data format](http://universaldependencies.org/format.html).
+The software requires having a `training.conll` and `development.conll` files formatted according to the [CoNLL data format](http://ilk.uvt.nl/conll/#dataformat), or a `training.conllu` and `development.conllu` files formatted according to the [CoNLLU data format](http://universaldependencies.org/format.html).
 
 #### Train a parsing model
 
