@@ -98,6 +98,7 @@ class MSTParserLSTM:
                 (len(self.irels), self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
             self.routBias = self.model.add_parameters((len(self.irels)))
 
+    @profile
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
