@@ -1,5 +1,5 @@
 # A Pytorch implementation of the BIST Parsers (for graph based parser only)
-The DyNet implementation by the author's of the original paper [Simple and Accurate Dependency Parsing Using Bidirectional LSTM Feature Representations](https://www.transacl.org/ojs/index.php/tacl/article/viewFile/885/198) is [here](https://github.com/elikip/bist-parser) 
+To be more accurate, this implementation is just a line-by-line translation from the DyNet implementation that can be found [here](https://github.com/elikip/bist-parser). The techniques behind the parser are described in the paper [Simple and Accurate Dependency Parsing Using Bidirectional LSTM Feature Representations](https://www.transacl.org/ojs/index.php/tacl/article/viewFile/885/198).
 
 #### Required software
 
@@ -21,3 +21,8 @@ The command for parsing a `test.conll` file formatted according to the [CoNLL da
     python src/parser.py --predict --outdir [results directory] --test test.conll [--extrn extrn.vectors] --model [trained model file] --params [param file generate during training]
 
 The parser will store the resulting conll file in the out directory (`--outdir`).
+
+#### Difference from the DyNet implementation
+
+1. The multiple roots checking of the evaluation script is turned off (See [here](https://github.com/wddabc/bist-parser/blob/pytorch/bmstparser/src/utils/evaluation_script/conll17_ud_eval.py#L168-L172)) as it might generate trees with multiple roots. (See the discussion [here](https://github.com/elikip/bist-parser/issues/10)) 
+2. This version has not yet supports deep LSTM as the DyNet version does. It means `--lstmlayer` is no larger than 1.
