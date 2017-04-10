@@ -6,7 +6,7 @@ import sys
 from collections import defaultdict, namedtuple
 from operator import itemgetter
 
-
+@profile
 def parse_proj(scores, gold=None):
     '''
     Parse using Eisner's algorithm.

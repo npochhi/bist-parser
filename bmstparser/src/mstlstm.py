@@ -115,6 +115,7 @@ class MSTParserLSTM:
 
         return output
 
+    @profile
     def __evaluate(self, sentence, train):
         exprs = [[self.__getExpr(sentence, i, j, train) for j in xrange(len(sentence))] for i in xrange(len(sentence))]
         scores = np.array([[output.scalar_value() for output in exprsRow] for exprsRow in exprs])
