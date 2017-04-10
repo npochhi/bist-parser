@@ -6,11 +6,11 @@ To be more accurate, this implementation is just a line-by-line translation from
  * Python 2.7 interpreter
  * [Pytorch library](http://pytorch.org/)
 
+
+#### Data format:
+The software requires having a `training.conll` and `development.conll` files formatted according to the [CoNLL data format](http://ilk.uvt.nl/conll/#dataformat) or [CoNLLU data format](http://universaldependencies.org/format.html).
+
 #### Train a parsing model
-
-The software requires having a `training.conll` and `development.conll` files formatted according to the [CoNLL data format](http://ilk.uvt.nl/conll/#dataformat).
-
-#### Train data a parsing model:
 
     python src/parser.py --outdir [results directory] --train training.conll --dev development.conll --epochs 30 --lstmdims 125 --lstmlayers 2 [--extrn extrn.vectors] --bibi-lstm
 
