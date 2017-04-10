@@ -58,6 +58,12 @@ if __name__ == '__main__':
         else:
             os.system(
                 'python src/utils/evaluation_script/conll17_ud_eval.py -v -w src/utils/evaluation_script/weights.clas ' + options.conll_test + ' ' + testpath + ' > ' + testpath + '.txt')
+            with open(testpath + '.txt', 'rb') as f:
+                for l in f:
+                    if l.startswith('UAS'):
+                        print 'UAS:%s' % l.strip().split()[-1]
+                    elif l.startswith('LAS'):
+                        print 'LAS:%s' % l.strip().split()[-1]
     else:
         print 'Preparing vocab'
         words, w2i, pos, rels = utils.vocab(options.conll_train)
