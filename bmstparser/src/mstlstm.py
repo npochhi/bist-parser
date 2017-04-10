@@ -127,38 +127,38 @@ class MSTParserLSTMModel(nn.Module):
         self.plookup = nn.Embedding(len(pos) + 3, self.pdims)
         self.rlookup = nn.Embedding(len(rels), self.rdims)
 
-        self.hidLayerFOH = Parameter((self.hidden_units, self.ldims * 2))
-        self.hidLayerFOM = Parameter((self.hidden_units, self.ldims * 2))
+        self.hidLayerFOH = Parameter((self.ldims * 2, self.hidden_units))
+        self.hidLayerFOM = Parameter((self.ldims * 2, self.hidden_units))
         self.hidBias = Parameter((self.hidden_units))
 
         if self.hidden2_units:
-            self.hid2Layer = Parameter((self.hidden2_units, self.hidden_units))
+            self.hid2Layer = Parameter((self.hidden_units, self.hidden2_units))
             self.hid2Bias = Parameter((self.hidden2_units))
 
         self.outLayer = Parameter(
-            (1, self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
+            (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, 1))
 
         if self.labelsFlag:
-            self.rhidLayerFOH = Parameter((self.hidden_units, 2 * self.ldims))
-            self.rhidLayerFOM = Parameter((self.hidden_units, 2 * self.ldims))
+            self.rhidLayerFOH = Parameter((2 * self.ldims, self.hidden_units))
+            self.rhidLayerFOM = Parameter((2 * self.ldims, self.hidden_units))
             self.rhidBias = Parameter((self.hidden_units))
 
             if self.hidden2_units:
-                self.rhid2Layer = Parameter((self.hidden2_units, self.hidden_units))
+                self.rhid2Layer = Parameter((self.hidden_units, self.hidden2_units))
                 self.rhid2Bias = Parameter((self.hidden2_units))
 
             self.routLayer = Parameter(
-                (len(self.irels), self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
+                (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, len(self.irels)))
             self.routBias = Parameter((len(self.irels)))
-
+    @profile
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
             sentence[i].headfov = torch.mm(cat([sentence[i].lstms[0], sentence[i].lstms[1]]),
-                                           self.hidLayerFOH.t())
+                                           self.hidLayerFOH)
         if sentence[j].modfov is None:
             sentence[j].modfov = torch.mm(cat([sentence[j].lstms[0], sentence[j].lstms[1]]),
-                                          self.hidLayerFOM.t())
+                                          self.hidLayerFOM)
 
         if self.hidden2_units > 0:
             output = torch.mm(
@@ -166,14 +166,14 @@ class MSTParserLSTMModel(nn.Module):
                 self.activation(
                     self.hid2Bias +
                     torch.mm(self.activation(sentence[i].headfov + sentence[j].modfov + self.hidBias),
-                             self.hid2Layer.t())
+                             self.hid2Layer)
                 )
             )  # + self.outBias
         else:
             output = torch.mm(
                 self.activation(
                     sentence[i].headfov + sentence[j].modfov + self.hidBias),
-                self.outLayer.t())  # + self.outBias
+                self.outLayer)  # + self.outBias
 
         return output
 
@@ -188,10 +188,10 @@ class MSTParserLSTMModel(nn.Module):
     def __evaluateLabel(self, sentence, i, j):
         if sentence[i].rheadfov is None:
             sentence[i].rheadfov = torch.mm(cat([sentence[i].lstms[0], sentence[i].lstms[1]]),
-                                            self.rhidLayerFOH.t())
+                                            self.rhidLayerFOH)
         if sentence[j].rmodfov is None:
             sentence[j].rmodfov = torch.mm(cat([sentence[j].lstms[0], sentence[j].lstms[1]]),
-                                           self.rhidLayerFOM.t())
+                                           self.rhidLayerFOM)
 
         if self.hidden2_units > 0:
             output = torch.mm(
@@ -207,7 +207,7 @@ class MSTParserLSTMModel(nn.Module):
         else:
             output = torch.mm(
                 self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias),
-                self.routLayer.t()
+                self.routLayer
             ) + self.routBias
 
         return output.data.numpy()[0], output[0]
