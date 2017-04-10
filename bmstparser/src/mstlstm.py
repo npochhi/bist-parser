@@ -177,6 +177,7 @@ class MSTParserLSTMModel(nn.Module):
 
         return output
 
+    @profile
     def __evaluate(self, sentence, train):
         exprs = [[self.__getExpr(sentence, i, j, train)
                   for j in xrange(len(sentence))]
