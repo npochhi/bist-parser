@@ -3,7 +3,6 @@
 
 import numpy as np
 
-@profile
 def parse_proj(scores, gold=None):
     '''
     Parse using Eisner's algorithm.
