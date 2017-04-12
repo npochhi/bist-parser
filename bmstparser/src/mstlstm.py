@@ -98,7 +98,6 @@ class MSTParserLSTM:
                 (len(self.irels), self.hidden2_units if self.hidden2_units > 0 else self.hidden_units))
             self.routBias = self.model.add_parameters((len(self.irels)))
 
-    @profile
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
@@ -116,7 +115,6 @@ class MSTParserLSTM:
 
         return output
 
-    @profile
     def __evaluate(self, sentence, train):
         exprs = [[self.__getExpr(sentence, i, j, train) for j in xrange(len(sentence))] for i in xrange(len(sentence))]
         scores = np.array([[output.scalar_value() for output in exprsRow] for exprsRow in exprs])
