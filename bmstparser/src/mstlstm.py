@@ -18,6 +18,8 @@ else:
     print 'Using GPU'
     use_gpu = True
 
+get_data = lambda x: x.data.cpu() if use_gpu else lambda x: x.data
+
 
 def Variable(inner):
     return torch.autograd.Variable(inner.cuda() if use_gpu else inner)
@@ -192,7 +194,7 @@ class MSTParserLSTMModel(nn.Module):
         exprs = [[self.__getExpr(sentence, i, j, train)
                   for j in xrange(len(sentence))]
                  for i in xrange(len(sentence))]
-        scores = np.array([[output.data.numpy()[0, 0] for output in exprsRow] for exprsRow in exprs])
+        scores = np.array([[get_data(output).numpy()[0, 0] for output in exprsRow] for exprsRow in exprs])
         return scores, exprs
 
     def __evaluateLabel(self, sentence, i, j):
@@ -220,7 +222,7 @@ class MSTParserLSTMModel(nn.Module):
                 self.routLayer
             ) + self.routBias
 
-        return output.data.numpy()[0], output[0]
+        return get_data(output).numpy()[0], output[0]
 
     def predict(self, sentence):
         for entry in sentence:
