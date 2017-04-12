@@ -1,5 +1,6 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, os, os.path, time
+import torch
 
 if __name__ == '__main__':
     parser = OptionParser()
@@ -17,6 +18,7 @@ if __name__ == '__main__':
     parser.add_option("--pembedding", type="int", dest="pembedding_dims", default=25)
     parser.add_option("--rembedding", type="int", dest="rembedding_dims", default=25)
     parser.add_option("--epochs", type="int", dest="epochs", default=30)
+    parser.add_option("--numthread", type="int", dest="nthread", default=1)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -32,6 +34,8 @@ if __name__ == '__main__':
     parser.add_option("--disablecostaug", action="store_false", dest="costaugFlag", default=True)
 
     (options, args) = parser.parse_args()
+    torch.set_num_threads(options.nthreads)
+    print torch.get_num_threads()
 
     print 'Using external embedding:', options.external_embedding
 
