@@ -18,7 +18,7 @@ else:
     print 'Using GPU'
     use_gpu = True
 
-get_data = lambda x: x.data.cpu() if use_gpu else lambda x: x.data
+get_data = (lambda x: x.data.cpu()) if use_gpu else (lambda x: x.data)
 
 
 def Variable(inner):
