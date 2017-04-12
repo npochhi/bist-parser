@@ -34,7 +34,7 @@ if __name__ == '__main__':
     parser.add_option("--disablecostaug", action="store_false", dest="costaugFlag", default=True)
 
     (options, args) = parser.parse_args()
-    torch.set_num_threads(options.nthreads)
+    torch.set_num_threads(options.nthread)
     print torch.get_num_threads()
 
     print 'Using external embedding:', options.external_embedding
