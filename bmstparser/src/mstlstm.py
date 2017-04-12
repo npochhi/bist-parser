@@ -1,30 +1,41 @@
 import shutil
 import torch.nn as nn
 import torch.nn.functional as F
+# from torch.nn import Parameter
 from torch.nn.init import *
-from torch.autograd import Variable
 from torch import optim
-from utils import read_conll, write_conll
+from utils import read_conll
 from operator import itemgetter
 import utils, time, random, decoder
 import numpy as np
 
+import os
 
-def Parameter(shape=None, init=xavier_uniform, requires_grad=True):
+if 'GPU' not in os.environ or int(os.environ['GPU']) == 0:
+    print 'Using CPU'
+    use_gpu = False
+else:
+    print 'Using GPU'
+    use_gpu = True
+
+
+def Variable(inner):
+    return torch.autograd.Variable(inner.cuda() if use_gpu else inner)
+
+
+def Parameter(shape=None, init=xavier_uniform):
     if hasattr(init, 'shape'):
         assert not shape
-        return nn.Parameter(torch.Tensor(init)) if requires_grad else \
-            Variable(torch.Tensor(init), requires_grad=False)
+        return nn.Parameter(torch.Tensor(init))
     shape = (shape, 1) if type(shape) == int else shape
-    return nn.Parameter(init(torch.Tensor(*shape))) if requires_grad else \
-        Variable(init(torch.Tensor(*shape)), requires_grad=False)
+    return nn.Parameter(init(torch.Tensor(*shape)))
 
 
 def scalar(f):
     if type(f) == int:
         return Variable(torch.LongTensor([f]))
     if type(f) == float:
-        return Variable(torch.Tensor([f]))
+        return Variable(torch.FloatTensor([f]))
 
 
 def cat(l, dimension=-1):
@@ -150,7 +161,7 @@ class MSTParserLSTMModel(nn.Module):
             self.routLayer = Parameter(
                 (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, len(self.irels)))
             self.routBias = Parameter((len(self.irels)))
-    @profile
+
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
@@ -177,7 +188,6 @@ class MSTParserLSTMModel(nn.Module):
 
         return output
 
-    @profile
     def __evaluate(self, sentence, train):
         exprs = [[self.__getExpr(sentence, i, j, train)
                   for j in xrange(len(sentence))]
@@ -338,7 +348,8 @@ def get_optim(opt, parameters):
 
 class MSTParserLSTM:
     def __init__(self, vocab, pos, rels, w2i, options):
-        self.model = MSTParserLSTMModel(vocab, pos, rels, w2i, options)
+        model = MSTParserLSTMModel(vocab, pos, rels, w2i, options)
+        self.model = model.cuda() if use_gpu else model
         self.trainer = get_optim(options.optim, self.model.parameters())
 
     def predict(self, conll_path):
