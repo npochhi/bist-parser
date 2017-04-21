@@ -12,13 +12,13 @@ The software requires having a `training.conll` and `development.conll` files fo
 
 #### Train a parsing model
 
-    python src/parser.py --outdir [results directory] --train training.conll --dev development.conll --epochs 30 --lstmdims 125 --lstmlayers 2 [--extrn extrn.vectors] --bibi-lstm
+    python src/parser.py --outdir [results directory] --train data/en-universal-train.conll --dev data/en-universal-dev.conll --epochs 30 --lstmdims 125 --bibi-lstm
 
 #### Parse data with your parsing model
 
 The command for parsing a `test.conll` file formatted according to the [CoNLL data format](http://ilk.uvt.nl/conll/#dataformat) with a previously trained model is:
 
-    python src/parser.py --predict --outdir [results directory] --test test.conll [--extrn extrn.vectors] --model [trained model file] --params [param file generate during training]
+    python src/parser.py --predict --outdir [results directory] --test data/en-universal-test.conll --model [trained model file] --params [param file generate during training]
 
 The parser will store the resulting conll file in the out directory (`--outdir`).
 
