@@ -39,7 +39,6 @@ if __name__ == '__main__':
     active_thread = options.numthread if max_thread>options.numthread else max_thread
     torch.set_num_threads(active_thread)
     print(active_thread, "threads are in use")
-
     print('Using external embedding:', options.external_embedding)
 
     if options.predictFlag:
