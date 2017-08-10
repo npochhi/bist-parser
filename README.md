@@ -3,7 +3,7 @@ To be more accurate, this implementation is just a line-by-line translation from
 
 #### Required software
 
- * Python 2.7 interpreter
+ * Python 2.7 interpreter (For Python 3 implementation, please checkout branch pytorch_python3, [Thanks to Zhiqiang Xie](https://github.com/xiezhq-hermann))
  * [Pytorch library](http://pytorch.org/)
 
 
