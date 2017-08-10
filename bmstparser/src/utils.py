@@ -1,5 +1,6 @@
 from collections import Counter
 import re
+numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+");
 
 
 class ConllEntry:
@@ -7,8 +8,8 @@ class ConllEntry:
         self.id = id
         self.form = form
         self.norm = normalize(form)
-        self.cpos = cpos.upper()
-        self.pos = pos.upper()
+        self.cpos = cpos#.upper()
+        self.pos = pos#.upper()
         self.parent_id = parent_id
         self.relation = relation
 
@@ -21,7 +22,8 @@ class ConllEntry:
         self.pred_relation = None
 
     def __str__(self):
-        values = [str(self.id), self.form, self.lemma, self.cpos, self.pos, self.feats, str(self.pred_parent_id) if self.pred_parent_id is not None else None, self.pred_relation, self.deps, self.misc]
+        values = [str(self.id), self.form, self.lemma, self.pos, self.cpos, self.feats, \
+        str(self.pred_parent_id) if self.pred_parent_id is not None else None, self.pred_relation, self.deps, self.misc]
         return '\t'.join(['_' if v is None else v for v in values])
 
 
@@ -36,7 +38,8 @@ def vocab(conll_path):
             posCount.update([node.pos for node in sentence if isinstance(node, ConllEntry)])
             relCount.update([node.relation for node in sentence if isinstance(node, ConllEntry)])
 
-    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())}, posCount.keys(), relCount.keys())
+    print('the amount of kind of words, pos-tag and relations:', len(wordsCount), len(posCount), len(relCount))
+    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())}, list(posCount.keys()), list(relCount.keys()))
 
 
 def read_conll(fh):
@@ -51,7 +54,7 @@ def read_conll(fh):
             if line[0] == '#' or '-' in tok[0] or '.' in tok[0]:
                 tokens.append(line.strip())
             else:
-                tokens.append(ConllEntry(int(tok[0]), tok[1], tok[2], tok[4], tok[3], tok[5], int(tok[6]) if tok[6] != '_' else -1, tok[7], tok[8], tok[9]))
+                tokens.append(ConllEntry(int(tok[0]), tok[1], tok[2], tok[3], tok[4], tok[5], int(tok[6]) if tok[6] != '_' else -1, tok[7], tok[8], tok[9]))
     if len(tokens) > 1:
         yield tokens
 
@@ -64,7 +67,5 @@ def write_conll(fn, conll_gen):
             fh.write('\n')
 
 
-numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+");
 def normalize(word):
     return 'NUM' if numberRegex.match(word) else word.lower()
-
