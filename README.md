@@ -22,6 +22,12 @@ The command for parsing a `test.conll` file formatted according to the [CoNLL da
 
 The parser will store the resulting conll file in the out directory (`--outdir`).
 
+In order to use the non-projective dependency parser, first install the following library:
+
+    `pip install git+https://github.com/andersjo/dependency_decoding`
+
+From then on, just add the `--non-projective` option to the usual python command line string.
+
 #### Difference from the DyNet implementation
 
 1. The multiple roots checking of the evaluation script is turned off (See [here](https://github.com/wddabc/bist-parser/blob/pytorch/bmstparser/src/utils/evaluation_script/conll17_ud_eval.py#L168-L172)) as it might generate trees with multiple roots. (See the discussion [here](https://github.com/elikip/bist-parser/issues/10)) 

@@ -6,7 +6,7 @@ from torch.nn.init import *
 from torch import optim
 from utils import read_conll
 from operator import itemgetter
-import utils, time, random, new_decoder
+import utils, time, random, non_projective_CLE_decoder, projective_eisenbergy_decoder
 import numpy as np
 
 
@@ -79,6 +79,8 @@ class MSTParserLSTMModel(nn.Module):
         self.pdims = options.pembedding_dims
         self.rdims = options.rembedding_dims
         self.layers = options.lstm_layers
+        self.parser_type = options.parser_type
+
         self.wordsCount = vocab
         self.vocab = {word: ind + 3 for word, ind in w2i.items()}
         self.pos = {word: ind + 3 for ind, word in enumerate(pos)}
@@ -260,7 +262,10 @@ class MSTParserLSTMModel(nn.Module):
                     rentry.lstms[0] = blstm_backward()
 
         scores, exprs = self.__evaluate(sentence, True)
-        heads = new_decoder.parse_proj(scores)
+        if self.parser_type:
+            heads = non_projective_CLE_decoder.parse_proj(scores)
+        else:
+            heads = projective_eisenbergy_decoder.parse_proj(scores)
 
         for entry, head in zip(sentence, heads):
             entry.pred_parent_id = head
@@ -320,7 +325,10 @@ class MSTParserLSTMModel(nn.Module):
 
         scores, exprs = self.__evaluate(sentence, True)
         gold = [entry.parent_id for entry in sentence]
-        heads = new_decoder.parse_proj(scores, gold if self.costaugFlag else None)
+        if self.parser_type:
+            heads = non_projective_CLE_decoder.parse_proj(scores)
+        else:
+            heads = projective_eisenbergy_decoder.parse_proj(scores, gold if self.costaugFlag else None)
 
         if self.labelsFlag:
             for modifier, head in enumerate(gold[1:]):
