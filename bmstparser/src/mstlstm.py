@@ -6,10 +6,9 @@ from torch.nn.init import *
 from torch import optim
 from utils import read_conll
 from operator import itemgetter
-import utils, time, random, decoder
+import utils, time, random, new_decoder
 import numpy as np
 
-import os
 
 use_gpu = True if torch.cuda.is_available() else False
 
@@ -39,6 +38,9 @@ def cat(l, dimension=-1):
     valid_l = [x for x in l if x is not None]
     if dimension < 0:
         dimension += len(valid_l[0].size())
+    for idx, x in enumerate(valid_l):
+        if x.dim() == 0:
+            valid_l[idx] = valid_l[idx].view(1)
     return torch.cat(valid_l, dimension)
 
 
@@ -258,7 +260,7 @@ class MSTParserLSTMModel(nn.Module):
                     rentry.lstms[0] = blstm_backward()
 
         scores, exprs = self.__evaluate(sentence, True)
-        heads = decoder.parse_proj(scores)
+        heads = new_decoder.parse_proj(scores)
 
         for entry, head in zip(sentence, heads):
             entry.pred_parent_id = head
@@ -318,7 +320,7 @@ class MSTParserLSTMModel(nn.Module):
 
         scores, exprs = self.__evaluate(sentence, True)
         gold = [entry.parent_id for entry in sentence]
-        heads = decoder.parse_proj(scores, gold if self.costaugFlag else None)
+        heads = new_decoder.parse_proj(scores, gold if self.costaugFlag else None)
 
         if self.labelsFlag:
             for modifier, head in enumerate(gold[1:]):
