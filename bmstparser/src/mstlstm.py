@@ -263,7 +263,7 @@ class MSTParserLSTMModel(nn.Module):
 
         scores, exprs = self.__evaluate(sentence, True)
         if self.parser_type:
-            heads = non_projective_CLE_decoder.parse_proj(scores)
+            heads = non_projective_CLE_decoder.parse_nonproj(scores)
         else:
             heads = projective_eisenbergy_decoder.parse_proj(scores)
 
@@ -325,8 +325,9 @@ class MSTParserLSTMModel(nn.Module):
 
         scores, exprs = self.__evaluate(sentence, True)
         gold = [entry.parent_id for entry in sentence]
+        # print(sentence[1].form, scores)
         if self.parser_type:
-            heads = non_projective_CLE_decoder.parse_proj(scores)
+            heads = non_projective_CLE_decoder.parse_nonproj(scores)
         else:
             heads = projective_eisenbergy_decoder.parse_proj(scores, gold if self.costaugFlag else None)
 
@@ -359,6 +360,7 @@ class MSTParserLSTM:
         self.trainer = get_optim(options, self.model.parameters())
 
     def predict(self, conll_path):
+        # print(conll_path)
         with open(conll_path, 'r') as conllFP:
             for iSentence, sentence in enumerate(read_conll(conllFP)):
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
@@ -384,7 +386,8 @@ class MSTParserLSTM:
         start = time.time()
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
-            random.shuffle(shuffledData)
+            # random.shuffle(shuffledData)
+            shuffledData = shuffledData[:200]
             errs = []
             lerrs = []
             for iSentence, sentence in enumerate(shuffledData):
@@ -404,6 +407,8 @@ class MSTParserLSTM:
                 eloss += e
                 mloss += e
                 etotal += len(sentence)
+                # print([x.form for x in sentence])
+                # exit(0)
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
                         eerrs = torch.sum(cat(errs + lerrs))
