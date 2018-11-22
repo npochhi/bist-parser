@@ -386,8 +386,7 @@ class MSTParserLSTM:
         start = time.time()
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
-            # random.shuffle(shuffledData)
-            shuffledData = shuffledData[:200]
+            random.shuffle(shuffledData)
             errs = []
             lerrs = []
             for iSentence, sentence in enumerate(shuffledData):
