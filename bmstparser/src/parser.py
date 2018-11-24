@@ -1,6 +1,6 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, os, os.path, time
-import torch
+import torch, pdb
 import multiprocessing
 
 if __name__ == '__main__':
@@ -33,7 +33,6 @@ if __name__ == '__main__':
     parser.add_option("--predict", action="store_true", dest="predictFlag", default=False)
     parser.add_option("--bibi-lstm", action="store_true", dest="bibiFlag", default=False)
     parser.add_option("--disablecostaug", action="store_false", dest="costaugFlag", default=True)
-    parser.add_option("--non-projective", action="store_true", dest="parser_type", default=False)
 
     (options, args) = parser.parse_args()
     max_thread = multiprocessing.cpu_count()
@@ -74,7 +73,7 @@ if __name__ == '__main__':
     else:
         print('Preparing vocab')
         words, w2i, pos, rels = list(utils.vocab(options.conll_train))
-
+        pdb.set_trace()
         with open(os.path.join(options.output, options.params), 'wb') as paramsfp:
             pickle.dump((words, w2i, pos, rels, options), paramsfp)
         print('Finished collecting vocab')

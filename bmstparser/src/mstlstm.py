@@ -6,9 +6,11 @@ from torch.nn.init import *
 from torch import optim
 from utils import read_conll
 from operator import itemgetter
-import utils, time, random, non_projective_CLE_decoder, projective_eisenbergy_decoder
+import utils, time, random, decoder
 import numpy as np
+import pdb
 
+import os
 
 use_gpu = True if torch.cuda.is_available() else False
 
@@ -36,11 +38,11 @@ def scalar(f):
 
 def cat(l, dimension=-1):
     valid_l = [x for x in l if x is not None]
+    for idx, x in enumerate(valid_l):
+        if len(x.size()) == 0:
+            valid_l[idx] = valid_l[idx].view(1)
     if dimension < 0:
         dimension += len(valid_l[0].size())
-    for idx, x in enumerate(valid_l):
-        if x.dim() == 0:
-            valid_l[idx] = valid_l[idx].view(1)
     return torch.cat(valid_l, dimension)
 
 
@@ -79,8 +81,6 @@ class MSTParserLSTMModel(nn.Module):
         self.pdims = options.pembedding_dims
         self.rdims = options.rembedding_dims
         self.layers = options.lstm_layers
-        self.parser_type = options.parser_type
-
         self.wordsCount = vocab
         self.vocab = {word: ind + 3 for word, ind in w2i.items()}
         self.pos = {word: ind + 3 for ind, word in enumerate(pos)}
@@ -262,10 +262,7 @@ class MSTParserLSTMModel(nn.Module):
                     rentry.lstms[0] = blstm_backward()
 
         scores, exprs = self.__evaluate(sentence, True)
-        if self.parser_type:
-            heads = non_projective_CLE_decoder.parse_nonproj(scores)
-        else:
-            heads = projective_eisenbergy_decoder.parse_proj(scores)
+        heads = decoder.parse_proj(scores)
 
         for entry, head in zip(sentence, heads):
             entry.pred_parent_id = head
@@ -278,7 +275,6 @@ class MSTParserLSTMModel(nn.Module):
                 sentence[modifier + 1].pred_relation = self.irels[max(enumerate(scores), key=itemgetter(1))[0]]
 
     def forward(self, sentence, errs, lerrs):
-
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
@@ -290,14 +286,12 @@ class MSTParserLSTMModel(nn.Module):
                 evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
                     dropFlag or (random.random() < 0.5)) else 0))
             entry.vec = cat([wordvec, posvec, evec])
-
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
             entry.modfov = None
 
             entry.rheadfov = None
             entry.rmodfov = None
-
         if self.blstmFlag:
             lstm_forward = RNNState(self.builders[0])
             lstm_backward = RNNState(self.builders[1])
@@ -325,11 +319,7 @@ class MSTParserLSTMModel(nn.Module):
 
         scores, exprs = self.__evaluate(sentence, True)
         gold = [entry.parent_id for entry in sentence]
-        # print(sentence[1].form, scores)
-        if self.parser_type:
-            heads = non_projective_CLE_decoder.parse_nonproj(scores)
-        else:
-            heads = projective_eisenbergy_decoder.parse_proj(scores, gold if self.costaugFlag else None)
+        heads = decoder.parse_proj(scores, gold if self.costaugFlag else None)
 
         if self.labelsFlag:
             for modifier, head in enumerate(gold[1:]):
@@ -360,7 +350,6 @@ class MSTParserLSTM:
         self.trainer = get_optim(options, self.model.parameters())
 
     def predict(self, conll_path):
-        # print(conll_path)
         with open(conll_path, 'r') as conllFP:
             for iSentence, sentence in enumerate(read_conll(conllFP)):
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
@@ -389,6 +378,13 @@ class MSTParserLSTM:
             random.shuffle(shuffledData)
             errs = []
             lerrs = []
+            morph_features = set()
+            for sent in shuffledData:
+                for entry in sent:
+                    print(entry.feats)
+                    morph_features.update(entr.split('=')[0] for entr in entry.feats.split('|'))
+            print(morph_features)
+            input()
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence, \
@@ -406,8 +402,6 @@ class MSTParserLSTM:
                 eloss += e
                 mloss += e
                 etotal += len(sentence)
-                # print([x.form for x in sentence])
-                # exit(0)
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
                         eerrs = torch.sum(cat(errs + lerrs))
