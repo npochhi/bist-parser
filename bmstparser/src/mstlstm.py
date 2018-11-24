@@ -8,15 +8,11 @@ from utils import read_conll
 from operator import itemgetter
 import utils, time, random, decoder
 import numpy as np
+import pdb
 
 import os
 
-if 'GPU' not in os.environ or int(os.environ['GPU']) == 0:
-    print 'Using CPU'
-    use_gpu = False
-else:
-    print 'Using GPU'
-    use_gpu = True
+use_gpu = True if torch.cuda.is_available() else False
 
 get_data = (lambda x: x.data.cpu()) if use_gpu else (lambda x: x.data)
 
@@ -29,7 +25,7 @@ def Parameter(shape=None, init=xavier_uniform):
     if hasattr(init, 'shape'):
         assert not shape
         return nn.Parameter(torch.Tensor(init))
-    shape = (shape, 1) if type(shape) == int else shape
+    shape = (1,shape) if type(shape) == int else shape
     return nn.Parameter(init(torch.Tensor(*shape)))
 
 
@@ -41,7 +37,10 @@ def scalar(f):
 
 
 def cat(l, dimension=-1):
-    valid_l = filter(lambda x: x, l)
+    valid_l = [x for x in l if x is not None]
+    for idx, x in enumerate(valid_l):
+        if len(x.size()) == 0:
+            valid_l[idx] = valid_l[idx].view(1)
     if dimension < 0:
         dimension += len(valid_l[0].size())
     return torch.cat(valid_l, dimension)
@@ -83,7 +82,7 @@ class MSTParserLSTMModel(nn.Module):
         self.rdims = options.rembedding_dims
         self.layers = options.lstm_layers
         self.wordsCount = vocab
-        self.vocab = {word: ind + 3 for word, ind in w2i.iteritems()}
+        self.vocab = {word: ind + 3 for word, ind in w2i.items()}
         self.pos = {word: ind + 3 for ind, word in enumerate(pos)}
         self.rels = {word: ind for ind, word in enumerate(rels)}
         self.irels = rels
@@ -96,18 +95,18 @@ class MSTParserLSTMModel(nn.Module):
                                        external_embedding_fp}
             external_embedding_fp.close()
 
-            self.edim = len(self.external_embedding.values()[0])
-            self.noextrn = [0.0 for _ in xrange(self.edim)]
+            self.edim = len(list(self.external_embedding.values())[0])
+            #self.noextrn = [0.0 for _ in range(self.edim)]
             self.extrnd = {word: i + 3 for i, word in enumerate(self.external_embedding)}
             np_emb = np.zeros((len(self.external_embedding) + 3, self.edim))
-            for word, i in self.extrnd.iteritems():
+            for word, i in self.extrnd.items():
                 np_emb[i] = self.external_embedding[word]
             self.elookup = nn.Embedding(*np_emb.shape)
-            self.elookup.weight = Parameter(np_emb)
+            self.elookup.weight = Parameter(init=np_emb)
             self.extrnd['*PAD*'] = 1
             self.extrnd['*INITIAL*'] = 2
 
-            print 'Load external embedding. Vector dimensions', self.edim
+            print('Load external embedding. Vector dimensions', self.edim)
 
         if self.bibiFlag:
             self.builders = [nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims),
@@ -165,7 +164,6 @@ class MSTParserLSTMModel(nn.Module):
             self.routBias = Parameter((len(self.irels)))
 
     def __getExpr(self, sentence, i, j, train):
-
         if sentence[i].headfov is None:
             sentence[i].headfov = torch.mm(cat([sentence[i].lstms[0], sentence[i].lstms[1]]),
                                            self.hidLayerFOH)
@@ -175,12 +173,12 @@ class MSTParserLSTMModel(nn.Module):
 
         if self.hidden2_units > 0:
             output = torch.mm(
-                self.outLayer,
                 self.activation(
                     self.hid2Bias +
                     torch.mm(self.activation(sentence[i].headfov + sentence[j].modfov + self.hidBias),
                              self.hid2Layer)
-                )
+                ),
+                self.outLayer
             )  # + self.outBias
         else:
             output = torch.mm(
@@ -192,8 +190,8 @@ class MSTParserLSTMModel(nn.Module):
 
     def __evaluate(self, sentence, train):
         exprs = [[self.__getExpr(sentence, i, j, train)
-                  for j in xrange(len(sentence))]
-                 for i in xrange(len(sentence))]
+                  for j in range(len(sentence))]
+                 for i in range(len(sentence))]
         scores = np.array([[get_data(output).numpy()[0, 0] for output in exprsRow] for exprsRow in exprs])
         return scores, exprs
 
@@ -207,15 +205,14 @@ class MSTParserLSTMModel(nn.Module):
 
         if self.hidden2_units > 0:
             output = torch.mm(
-                self.routLayer,
                 self.activation(
                     self.rhid2Bias +
                     torch.mm(
-                        self.rhid2Layer,
-                        self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
-                    ) +
-                    self.routBias)
-            )
+                        self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias),
+                        self.rhid2Layer
+                    )),
+                self.routLayer
+            ) + self.routBias
         else:
             output = torch.mm(
                 self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias),
@@ -272,12 +269,12 @@ class MSTParserLSTMModel(nn.Module):
             entry.pred_relation = '_'
 
         if self.labelsFlag:
-            for modifier, head in enumerate(heads[1:]):
+            head_list = list(heads)
+            for modifier, head in enumerate(head_list[1:]):
                 scores, exprs = self.__evaluateLabel(sentence, head, modifier + 1)
                 sentence[modifier + 1].pred_relation = self.irels[max(enumerate(scores), key=itemgetter(1))[0]]
 
     def forward(self, sentence, errs, lerrs):
-
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
@@ -289,14 +286,12 @@ class MSTParserLSTMModel(nn.Module):
                 evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
                     dropFlag or (random.random() < 0.5)) else 0))
             entry.vec = cat([wordvec, posvec, evec])
-
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
             entry.modfov = None
 
             entry.rheadfov = None
             entry.rmodfov = None
-
         if self.blstmFlag:
             lstm_forward = RNNState(self.builders[0])
             lstm_backward = RNNState(self.builders[1])
@@ -342,9 +337,9 @@ class MSTParserLSTMModel(nn.Module):
 
 
 def get_optim(opt, parameters):
-    if opt == 'sgd':
-        return optim.SGD(parameters, lr=opt.lr)
-    elif opt == 'adam':
+    if opt.optim == 'sgd':
+        return optim.SGD(parameters, lr=opt.learning_rate)
+    elif opt.optim == 'adam':
         return optim.Adam(parameters)
 
 
@@ -352,7 +347,7 @@ class MSTParserLSTM:
     def __init__(self, vocab, pos, rels, w2i, options):
         model = MSTParserLSTMModel(vocab, pos, rels, w2i, options)
         self.model = model.cuda() if use_gpu else model
-        self.trainer = get_optim(options.optim, self.model.parameters())
+        self.trainer = get_optim(options, self.model.parameters())
 
     def predict(self, conll_path):
         with open(conll_path, 'r') as conllFP:
@@ -370,7 +365,7 @@ class MSTParserLSTM:
         self.model.load_state_dict(torch.load(fn))
 
     def train(self, conll_path):
-        print torch.__version__
+        print("pytorch version:",torch.__version__)
         batch = 1
         eloss = 0.0
         mloss = 0.0
@@ -383,12 +378,19 @@ class MSTParserLSTM:
             random.shuffle(shuffledData)
             errs = []
             lerrs = []
+            morph_features = set()
+            for sent in shuffledData:
+                for entry in sent:
+                    print(entry.feats)
+                    morph_features.update(entr.split('=')[0] for entr in entry.feats.split('|'))
+            print(morph_features)
+            input()
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
-                    print 'Processing sentence number:', iSentence, \
+                    print('Processing sentence number:', iSentence, \
                         'Loss:', eloss / etotal, \
                         'Errors:', (float(eerrors)) / etotal, \
-                        'Time', time.time() - start
+                        'Time', time.time() - start)
                     start = time.time()
                     eerrors = 0
                     eloss = 0.0
@@ -413,4 +415,4 @@ class MSTParserLSTM:
             eerrs.backward()
             self.trainer.step()
         self.trainer.zero_grad()
-        print "Loss: ", mloss / iSentence
+        print("Loss: ", mloss / iSentence)
