@@ -1,5 +1,6 @@
 from collections import Counter
 import re
+import pdb
 numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+");
 
 
@@ -14,12 +15,16 @@ class ConllEntry:
         self.relation = relation
 
         self.lemma = lemma
-        self.feats = feats
+        self.feats = {}
         self.deps = deps
         self.misc = misc
 
         self.pred_parent_id = None
         self.pred_relation = None
+
+        if feats != '_':
+            for node in feats.split('|'):
+                self.feats[node.split('=')[0]] = node.split('=')[1]
 
     def __str__(self):
         values = [str(self.id), self.form, self.lemma, self.pos, self.cpos, self.feats, \
@@ -31,15 +36,18 @@ def vocab(conll_path):
     wordsCount = Counter()
     posCount = Counter()
     relCount = Counter()
-
+    morph_feats = {}
     with open(conll_path, 'r') as conllFP:
-        for sentence in read_conll(conllFP):
+        for idx, sentence in enumerate(read_conll(conllFP)):
             wordsCount.update([node.norm for node in sentence if isinstance(node, ConllEntry)])
             posCount.update([node.pos for node in sentence if isinstance(node, ConllEntry)])
             relCount.update([node.relation for node in sentence if isinstance(node, ConllEntry)])
-
+            for idx2, node in enumerate(sentence):
+                for feats in node.feats.keys():
+                    morph_feats[feats] = list(set(morph_feats.get(feats, []) + [node.feats[feats]]))
+    print(morph_feats)
     print('the amount of kind of words, pos-tag and relations:', len(wordsCount), len(posCount), len(relCount))
-    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())}, list(posCount.keys()), list(relCount.keys()))
+    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())}, list(posCount.keys()), list(relCount.keys()), morph_feats)
 
 
 def read_conll(fh):
@@ -52,7 +60,7 @@ def read_conll(fh):
             tokens = [root]
         else:
             if line[0] == '#' or '-' in tok[0] or '.' in tok[0]:
-                continue
+                pass
             else:
                 tokens.append(ConllEntry(int(tok[0]), tok[1], tok[2], tok[3], tok[4], tok[5], int(tok[6]) if tok[6] != '_' else -1, tok[7], tok[8], tok[9]))
     if len(tokens) > 1:
