@@ -33,7 +33,8 @@ if __name__ == '__main__':
     parser.add_option("--predict", action="store_true", dest="predictFlag", default=False)
     parser.add_option("--bibi-lstm", action="store_true", dest="bibiFlag", default=False)
     parser.add_option("--disablecostaug", action="store_false", dest="costaugFlag", default=True)
-
+     parser.add_option("--non-projective", action="store_true", dest="parser_type", default=False)
+     
     (options, args) = parser.parse_args()
     max_thread = multiprocessing.cpu_count()
     active_thread = options.numthread if max_thread>options.numthread else max_thread
