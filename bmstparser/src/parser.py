@@ -1,6 +1,6 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, os, os.path, time
-import torch, pdb
+import torch
 import multiprocessing
 
 if __name__ == '__main__':
@@ -72,14 +72,14 @@ if __name__ == '__main__':
                         print('LAS:%s' % l.strip().split()[-1])
     else:
         print('Preparing vocab')
-        words, w2i, pos, rels = list(utils.vocab(options.conll_train))
-        pdb.set_trace()
+        words, w2i, pos, rels, morph_feats = list(utils.vocab(options.conll_train))
+
         with open(os.path.join(options.output, options.params), 'wb') as paramsfp:
-            pickle.dump((words, w2i, pos, rels, options), paramsfp)
+            pickle.dump((words, w2i, pos, rels, morph_feats, options), paramsfp)
         print('Finished collecting vocab')
 
         print('Initializing lstm mstparser:')
-        parser = mstlstm.MSTParserLSTM(words, pos, rels, w2i, options)
+        parser = mstlstm.MSTParserLSTM(words, pos, rels, w2i, morph_feats, options)
         for epoch in range(options.epochs):
             print('Starting epoch', epoch)
             parser.train(options.conll_train)

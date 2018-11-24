@@ -9,7 +9,6 @@ from operator import itemgetter
 import utils, time, random, decoder
 import numpy as np
 import pdb
-
 import os
 
 use_gpu = True if torch.cuda.is_available() else False
@@ -38,9 +37,10 @@ def scalar(f):
 
 def cat(l, dimension=-1):
     valid_l = [x for x in l if x is not None]
-    for idx, x in enumerate(valid_l):
-        if len(x.size()) == 0:
-            valid_l[idx] = valid_l[idx].view(1)
+    for idx, elem in enumerate(valid_l):
+        if elem.dim() == 0:
+            valid_l[idx] = valid_l[idx].reshape((1))
+
     if dimension < 0:
         dimension += len(valid_l[0].size())
     return torch.cat(valid_l, dimension)
@@ -62,7 +62,7 @@ class RNNState():
 
 
 class MSTParserLSTMModel(nn.Module):
-    def __init__(self, vocab, pos, rels, w2i, options):
+    def __init__(self, vocab, pos, rels, w2i, morph_feats, options):
         super(MSTParserLSTMModel, self).__init__()
         random.seed(1)
         self.activations = {'tanh': F.tanh, 'sigmoid': F.sigmoid, 'relu': F.relu,
@@ -83,9 +83,17 @@ class MSTParserLSTMModel(nn.Module):
         self.layers = options.lstm_layers
         self.wordsCount = vocab
         self.vocab = {word: ind + 3 for word, ind in w2i.items()}
+        # pdb.set_trace()
         self.pos = {word: ind + 3 for ind, word in enumerate(pos)}
         self.rels = {word: ind for ind, word in enumerate(rels)}
         self.irels = rels
+        self.morph_feats = {}
+
+        for feat in morph_feats.keys():
+            # TODO
+            # if feat in options.morph_feats:
+            self.morph_feats[feat] = {val: ind + 1 for ind, val in enumerate(morph_feats[feat])}
+            self.morph_feats[feat]['None'] = 0
 
         self.external_embedding, self.edim = None, 0
         if options.external_embedding is not None:
@@ -109,8 +117,9 @@ class MSTParserLSTMModel(nn.Module):
             print('Load external embedding. Vector dimensions', self.edim)
 
         if self.bibiFlag:
-            self.builders = [nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims),
-                             nn.LSTMCell(self.wdims + self.pdims + self.edim, self.ldims)]
+            # TODO
+            self.builders = [nn.LSTMCell(self.wdims + self.pdims + self.edim + self.pdims * len(self.morph_feats.keys()), self.ldims),
+                             nn.LSTMCell(self.wdims + self.pdims + self.edim + self.pdims * len(self.morph_feats.keys()), self.ldims)]
             self.bbuilders = [nn.LSTMCell(self.ldims * 2, self.ldims),
                               nn.LSTMCell(self.ldims * 2, self.ldims)]
         elif self.layers > 0:
@@ -138,6 +147,11 @@ class MSTParserLSTMModel(nn.Module):
         self.wlookup = nn.Embedding(len(vocab) + 3, self.wdims)
         self.plookup = nn.Embedding(len(pos) + 3, self.pdims)
         self.rlookup = nn.Embedding(len(rels), self.rdims)
+        self.morph_lookup = {}
+
+        for feat in morph_feats.keys():
+            # TODO
+            self.morph_lookup[feat] = nn.Embedding(len(self.morph_feats[feat]), self.pdims)
 
         self.hidLayerFOH = Parameter((self.ldims * 2, self.hidden_units))
         self.hidLayerFOM = Parameter((self.ldims * 2, self.hidden_units))
@@ -275,23 +289,36 @@ class MSTParserLSTMModel(nn.Module):
                 sentence[modifier + 1].pred_relation = self.irels[max(enumerate(scores), key=itemgetter(1))[0]]
 
     def forward(self, sentence, errs, lerrs):
+
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
             wordvec = self.wlookup(scalar(
                 int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
             posvec = self.plookup(scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
+            # pdb.set_trace()
+            morph_vecs = {}
+            for feat in self.morph_feats.keys():
+                if feat in entry.feats.keys():
+                    morph_vecs[feat] = self.morph_lookup[feat](scalar(int(self.morph_feats[feat][entry.feats[feat]])).cpu())
+                else:
+                    morph_vecs[feat] = self.morph_lookup[feat](scalar(0).cpu())
+            morph_vec = None
+            for feat in sorted(morph_vecs.keys()):
+                morph_vec = cat([morph_vec, morph_vecs[feat].cuda()])
             evec = None
             if self.external_embedding is not None:
                 evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
                     dropFlag or (random.random() < 0.5)) else 0))
-            entry.vec = cat([wordvec, posvec, evec])
+            entry.vec = cat([wordvec, posvec, evec, morph_vec])
+
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
             entry.modfov = None
 
             entry.rheadfov = None
             entry.rmodfov = None
+
         if self.blstmFlag:
             lstm_forward = RNNState(self.builders[0])
             lstm_backward = RNNState(self.builders[1])
@@ -344,8 +371,8 @@ def get_optim(opt, parameters):
 
 
 class MSTParserLSTM:
-    def __init__(self, vocab, pos, rels, w2i, options):
-        model = MSTParserLSTMModel(vocab, pos, rels, w2i, options)
+    def __init__(self, vocab, pos, rels, w2i, morph_feats, options):
+        model = MSTParserLSTMModel(vocab, pos, rels, w2i, morph_feats, options)
         self.model = model.cuda() if use_gpu else model
         self.trainer = get_optim(options, self.model.parameters())
 
@@ -378,13 +405,6 @@ class MSTParserLSTM:
             random.shuffle(shuffledData)
             errs = []
             lerrs = []
-            morph_features = set()
-            for sent in shuffledData:
-                for entry in sent:
-                    print(entry.feats)
-                    morph_features.update(entr.split('=')[0] for entr in entry.feats.split('|'))
-            print(morph_features)
-            input()
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence, \
